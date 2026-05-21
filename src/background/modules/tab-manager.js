@@ -410,6 +410,7 @@ export class TabManager {
   async unloadTabs(tabs, syncSettings = {}) {
     const validTabs = Array.isArray(tabs) ? tabs.filter(tab => tab?.id !== undefined && tab?.id !== null) : [];
     if (validTabs.length === 0) return { success: true, unloaded: 0, behavior: 'none' };
+    await this.warnLargeTabOperation('close or unload', validTabs.length);
 
     const behavior = syncSettings.contextUnloadBehavior || 'close';
     if (behavior === 'discard') {
@@ -451,7 +452,7 @@ export class TabManager {
     if (tabIds.length === 0) return { success: true, unloaded: 0, behavior: 'stash' };
 
     const hiddenIds = await this.hideTabsIfAvailable(tabIds, syncSettings);
-    const groupedIds = hiddenIds.length > 0 ? [] : await this.groupTabsIfAvailable(preparedTabs, syncSettings);
+    const groupedIds = hiddenIds.length > 0 ? [] : await this.groupTabsIfAvailable(preparedTabs.filter(tab => !tab.pinned), syncSettings);
     let discardResult = { success: true, unloaded: 0 };
 
     if (syncSettings.stashDiscardTabs !== false) {
@@ -541,22 +542,24 @@ export class TabManager {
     }
 
     const groupedIds = [];
-    try {
-      for (const windowTabs of tabsByWindow.values()) {
+    for (const windowTabs of tabsByWindow.values()) {
+      try {
         const tabIds = windowTabs.map(tab => tab.id);
-        const groupId = await this.tabsAPI.group({ tabIds });
+        const groupId = await this.tabsAPI.group({
+          tabIds,
+          createProperties: { windowId: windowTabs[0].windowId }
+        });
         await this.tabGroupsAPI.update(groupId, {
           collapsed: true,
           title: syncSettings.chromiumStashGroupName || 'Closed tabs',
           color: 'grey'
         });
         groupedIds.push(...tabIds);
+      } catch (error) {
+        console.warn('Failed to group stashed tabs in window:', error?.message || error);
       }
-      return groupedIds;
-    } catch (error) {
-      console.warn('Failed to group stashed tabs:', error?.message || error);
-      return [];
     }
+    return groupedIds;
   }
 
   async ungroupStashedTabs(tabs, syncSettings = {}) {
@@ -581,6 +584,31 @@ export class TabManager {
       } catch (error) {
         console.warn('Failed to ungroup restored stashed tabs:', error?.message || error);
       }
+    }
+  }
+
+  async warnLargeTabOperation(action, count) {
+    if (count <= 50) return;
+
+    const message = `Canvas is about to ${action} ${count} browser tabs.`;
+    console.warn(`TabManager: ${message}`);
+
+    try {
+      const notificationsAPI = (typeof chrome !== 'undefined' && chrome.notifications)
+        ? chrome.notifications
+        : (typeof browser !== 'undefined' ? browser.notifications : null);
+
+      if (notificationsAPI?.create) {
+        await notificationsAPI.create({
+          type: 'basic',
+          iconUrl: 'assets/icons/logo-wr_128x128.png',
+          title: 'Large tab operation',
+          message,
+          priority: 1
+        });
+      }
+    } catch (error) {
+      console.warn('TabManager: Failed to show large tab warning:', error?.message || error);
     }
   }
 

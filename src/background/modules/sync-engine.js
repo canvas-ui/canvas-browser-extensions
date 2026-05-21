@@ -1469,6 +1469,7 @@ export class SyncEngine {
         console.log('SyncEngine: No tab documents to open');
         return;
       }
+      await this.warnLargeTabOperation('open', tabDocuments.length);
 
       // Get user-configured settings or use reasonable defaults
       const syncSettings = await browserStorage.getSyncSettings();
@@ -1500,6 +1501,31 @@ export class SyncEngine {
       autoSyncEnabled: this.autoSyncEnabled,
       webSocketConnected: webSocketClient.isConnected()
     };
+  }
+
+  async warnLargeTabOperation(action, count) {
+    if (count <= 50) return;
+
+    const message = `Canvas is about to ${action} ${count} browser tabs.`;
+    console.warn(`SyncEngine: ${message}`);
+
+    try {
+      const notificationsAPI = (typeof chrome !== 'undefined' && chrome.notifications)
+        ? chrome.notifications
+        : (typeof browser !== 'undefined' ? browser.notifications : null);
+
+      if (notificationsAPI?.create) {
+        await notificationsAPI.create({
+          type: 'basic',
+          iconUrl: 'assets/icons/logo-wr_128x128.png',
+          title: 'Large tab operation',
+          message,
+          priority: 1
+        });
+      }
+    } catch (error) {
+      console.warn('SyncEngine: Failed to show large tab warning:', error?.message || error);
+    }
   }
 
   // Add item to sync queue
