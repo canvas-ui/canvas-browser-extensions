@@ -415,16 +415,15 @@ export class SyncEngine {
 
       // If we have URLs, close matching tabs
       if (urlsToClose.size > 0) {
-        console.log('SyncEngine: Unloading tabs for removed documents:', Array.from(urlsToClose));
+        console.log('SyncEngine: Closing tabs for removed documents:', Array.from(urlsToClose));
 
-        const tabsToUnload = await tabManager.findTabsMatchingUrls(Array.from(urlsToClose), syncSettings);
-        await tabManager.unloadTabs(tabsToUnload, syncSettings);
+        const tabsToClose = await tabManager.findTabsMatchingUrls(Array.from(urlsToClose), syncSettings);
+        await tabManager.closeTabs(tabsToClose.map(tab => tab.id));
       } else if (documentIds.length > 0) {
         const trackedTabIds = tabManager.getTrackedTabIdsByDocumentIds(documentIds);
         if (trackedTabIds.length > 0) {
-          console.log('SyncEngine: Unloading tracked tabs for removed document IDs:', trackedTabIds);
-          const tabsToUnload = (await Promise.all(trackedTabIds.map(tabId => tabManager.getTab(tabId)))).filter(Boolean);
-          await tabManager.unloadTabs(tabsToUnload, syncSettings);
+          console.log('SyncEngine: Closing tracked tabs for removed document IDs:', trackedTabIds);
+          await tabManager.closeTabs(trackedTabIds);
           return;
         }
 
@@ -478,9 +477,8 @@ export class SyncEngine {
           continue;
         }
 
-        console.log('SyncEngine: Unloading stale tracked tab:', trackedTab.tabId, trackedTab.documentId);
-        const tab = await tabManager.getTab(trackedTab.tabId);
-        if (tab) await tabManager.unloadTabs([tab], syncSettings);
+        console.log('SyncEngine: Closing stale tracked tab:', trackedTab.tabId, trackedTab.documentId);
+        await tabManager.closeTab(trackedTab.tabId);
       }
     } catch (error) {
       console.error('SyncEngine: Failed to reconcile tracked tabs:', error);
@@ -1469,7 +1467,6 @@ export class SyncEngine {
         console.log('SyncEngine: No tab documents to open');
         return;
       }
-      await this.warnLargeTabOperation('open', tabDocuments.length);
 
       // Get user-configured settings or use reasonable defaults
       const syncSettings = await browserStorage.getSyncSettings();
@@ -1501,31 +1498,6 @@ export class SyncEngine {
       autoSyncEnabled: this.autoSyncEnabled,
       webSocketConnected: webSocketClient.isConnected()
     };
-  }
-
-  async warnLargeTabOperation(action, count) {
-    if (count <= 50) return;
-
-    const message = `Canvas is about to ${action} ${count} browser tabs.`;
-    console.warn(`SyncEngine: ${message}`);
-
-    try {
-      const notificationsAPI = (typeof chrome !== 'undefined' && chrome.notifications)
-        ? chrome.notifications
-        : (typeof browser !== 'undefined' ? browser.notifications : null);
-
-      if (notificationsAPI?.create) {
-        await notificationsAPI.create({
-          type: 'basic',
-          iconUrl: 'assets/icons/logo-wr_128x128.png',
-          title: 'Large tab operation',
-          message,
-          priority: 1
-        });
-      }
-    } catch (error) {
-      console.warn('SyncEngine: Failed to show large tab warning:', error?.message || error);
-    }
   }
 
   // Add item to sync queue
