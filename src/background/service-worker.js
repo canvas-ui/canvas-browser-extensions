@@ -428,6 +428,11 @@ tabsAPI.onUpdated.addListener(async (tabId, changeInfo, tab) => {
         return;
       }
 
+      if (!tabManager.isActiveSyncCandidate(tab)) {
+        console.log('🔄 AUTO-SYNC: Tab is hidden/discarded, skipping auto-sync:', tab.title);
+        return;
+      }
+
       console.log('🔄 AUTO-SYNC: Page loaded completely, checking if should sync:', tab.title, tab.url);
 
       // CRITICAL: Check if tab is already synced to prevent cascading sync loops
@@ -2164,6 +2169,10 @@ async function handleSyncTab(data, sendResponse) {
 
     console.log('Syncing tab to Canvas:', tab);
 
+    if (!tabManager.isActiveSyncCandidate(tab)) {
+      throw new Error('Hidden or discarded tabs are not active sync candidates');
+    }
+
     const mode = await browserStorage.getSyncMode();
     const currentContext = await browserStorage.getCurrentContext();
     const currentWorkspace = await browserStorage.getCurrentWorkspace();
@@ -2238,7 +2247,7 @@ async function handleSyncMultipleTabs(data, sendResponse) {
     const tabs = [];
     for (const tabId of tabIds) {
       const tab = await tabManager.getTab(tabId);
-      if (tab) {
+      if (tab && tabManager.isActiveSyncCandidate(tab)) {
         tabs.push(tab);
         console.log(`✅ Found tab ${tabId}: ${tab.title}`, {
           id: tab.id,
@@ -2249,7 +2258,7 @@ async function handleSyncMultipleTabs(data, sendResponse) {
           windowId: tab.windowId
         });
       } else {
-        console.warn(`⚠️ Tab ${tabId} not found`);
+        console.warn(`⚠️ Tab ${tabId} not found or inactive`);
       }
     }
 

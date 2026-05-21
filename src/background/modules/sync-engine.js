@@ -1164,7 +1164,7 @@ export class SyncEngine {
 
   // Helper: Sync all browser tabs to context
   async syncAllBrowserTabs(contextId) {
-    const browserTabs = await tabManager.getSyncableTabs();
+    const browserTabs = await tabManager.getActiveSyncableTabs();
     if (browserTabs.length > 0) {
       const browserIdentity = await browserStorage.getBrowserIdentity();
       const syncSettings = await browserStorage.getSyncSettings();
@@ -1174,7 +1174,7 @@ export class SyncEngine {
 
   // Helper: Sync all browser tabs to workspace
   async syncAllBrowserTabsToWorkspace(workspace, workspacePath) {
-    const browserTabs = await tabManager.getSyncableTabs();
+    const browserTabs = await tabManager.getActiveSyncableTabs();
     if (browserTabs.length > 0) {
       const browserIdentity = await browserStorage.getBrowserIdentity();
       const syncSettings = await browserStorage.getSyncSettings();

@@ -686,12 +686,13 @@ async function loadTabs() {
     if (allTabsResponse.success) {
       const rawTabs = allTabsResponse.tabs || [];
 
-      // Filter out discarded tabs and internal tabs - user doesn't want to see them anywhere
-      allBrowserTabs = rawTabs.filter(tab => !tab.discarded && !isInternalTab(tab));
+      // Hidden/discarded tabs are managed state, not active Browser > Canvas sync candidates.
+      allBrowserTabs = rawTabs.filter(tab => !tab.discarded && !tab.hidden && !isInternalTab(tab));
       const discardedCount = rawTabs.filter(tab => tab.discarded).length;
-      const internalCount = rawTabs.filter(tab => !tab.discarded && isInternalTab(tab)).length;
+      const hiddenCount = rawTabs.filter(tab => !tab.discarded && tab.hidden).length;
+      const internalCount = rawTabs.filter(tab => !tab.discarded && !tab.hidden && isInternalTab(tab)).length;
 
-      console.log(`All browser tabs loaded: ${allBrowserTabs.length} usable, ${discardedCount} discarded, ${internalCount} internal (filtered out)`);
+      console.log(`All browser tabs loaded: ${allBrowserTabs.length} usable, ${discardedCount} discarded, ${hiddenCount} hidden, ${internalCount} internal (filtered out)`);
 
       markSyncedBrowserTabs(docsResponse?.documents || []);
 

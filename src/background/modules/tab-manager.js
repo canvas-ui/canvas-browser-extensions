@@ -287,6 +287,15 @@ export class TabManager {
     return syncableTabs;
   }
 
+  async getActiveSyncableTabs() {
+    const tabs = await this.getSyncableTabs();
+    return tabs.filter(tab => this.isActiveSyncCandidate(tab));
+  }
+
+  isActiveSyncCandidate(tab) {
+    return this.shouldSyncTab(tab) && tab.discarded !== true && tab.hidden !== true;
+  }
+
   // Get unsynced tabs
   async getUnsyncedTabs() {
     await this.initialize();
@@ -733,7 +742,7 @@ export class TabManager {
     // Find browser tabs not in Canvas
     browserTabsByUrl.forEach((tab, url) => {
       if (!canvasDocsByUrl.has(url)) {
-        result.browserToCanvas.push(tab);
+        if (this.isActiveSyncCandidate(tab)) result.browserToCanvas.push(tab);
       } else {
         result.synced.push({
           browserTab: tab,
