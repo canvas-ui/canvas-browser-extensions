@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Canvas Browser Extension",
-  "version": "2.5.9",
+  "version": "2.5.10",
   "description": "Seamlessly sync browser tabs with Canvas server contexts",
 
   "permissions": [
@@ -9,7 +9,8 @@
     "storage",
     "contextMenus",
     "notifications",
-    "sidePanel"
+    "sidePanel",
+    "tabGroups"
   ],
 
   "host_permissions": [

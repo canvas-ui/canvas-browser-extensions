@@ -15,6 +15,7 @@ export class TabManager {
     // Browser compatibility
     this.tabsAPI = (typeof chrome !== 'undefined') ? chrome.tabs : browser.tabs;
     this.windowsAPI = (typeof chrome !== 'undefined') ? chrome.windows : browser.windows;
+    this.tabGroupsAPI = (typeof chrome !== 'undefined' && chrome.tabGroups) ? chrome.tabGroups : (typeof browser !== 'undefined' ? browser.tabGroups : null);
   }
 
   async initialize() {
@@ -183,13 +184,6 @@ export class TabManager {
         hasUrl: !!tab?.url,
         hasTitle: !!tab?.title
       });
-      return false;
-    }
-
-    // Allow tabs that are complete or loading (but not discarded)
-    // Note: 'unloaded' tabs are still syncable - Chrome just unloaded them to save memory
-    if (tab.discarded === true) {
-      console.log('❌ shouldSyncTab: Tab is discarded');
       return false;
     }
 
@@ -364,6 +358,18 @@ export class TabManager {
     }
   }
 
+  async openEmptyTab(options = {}) {
+    try {
+      return await this.tabsAPI.create({
+        active: options.active !== false,
+        ...options
+      });
+    } catch (error) {
+      console.error('Failed to open empty tab:', error);
+      throw error;
+    }
+  }
+
   // Close tab
   async closeTab(tabId) {
     try {
@@ -401,6 +407,83 @@ export class TabManager {
     }
   }
 
+  async unloadTabs(tabs, syncSettings = {}) {
+    const validTabs = Array.isArray(tabs) ? tabs.filter(tab => tab?.id !== undefined && tab?.id !== null) : [];
+    if (validTabs.length === 0) return { success: true, unloaded: 0, behavior: 'none' };
+
+    const behavior = syncSettings.contextUnloadBehavior || 'close';
+    if (behavior === 'discard') {
+      return await this.discardTabs(validTabs);
+    }
+    if (behavior === 'stash') {
+      return await this.stashTabs(validTabs, syncSettings);
+    }
+
+    await this.closeTabs(validTabs.map(tab => tab.id));
+    return { success: true, unloaded: validTabs.length, behavior: 'close' };
+  }
+
+  async discardTabs(tabs) {
+    const validTabs = Array.isArray(tabs) ? tabs.filter(tab => tab?.id !== undefined && tab?.id !== null) : [];
+    if (validTabs.length === 0 || typeof this.tabsAPI.discard !== 'function') {
+      return { success: false, unloaded: 0, behavior: 'discard', error: 'tabs.discard is not available' };
+    }
+
+    const preparedTabs = await this.prepareTabsForUnload(validTabs);
+    const tabIds = preparedTabs.map(tab => tab.id);
+    if (tabIds.length === 0) return { success: true, unloaded: 0, behavior: 'discard' };
+
+    try {
+      await this.tabsAPI.discard(tabIds);
+      return { success: true, unloaded: tabIds.length, behavior: 'discard' };
+    } catch (error) {
+      console.error('Failed to discard tabs:', error);
+      return { success: false, unloaded: 0, behavior: 'discard', error: error.message };
+    }
+  }
+
+  async stashTabs(tabs, syncSettings = {}) {
+    const validTabs = Array.isArray(tabs) ? tabs.filter(tab => tab?.id !== undefined && tab?.id !== null) : [];
+    if (validTabs.length === 0) return { success: true, unloaded: 0, behavior: 'stash' };
+
+    const preparedTabs = await this.prepareTabsForUnload(validTabs);
+    const tabIds = preparedTabs.map(tab => tab.id);
+    if (tabIds.length === 0) return { success: true, unloaded: 0, behavior: 'stash' };
+
+    const hiddenIds = await this.hideTabsIfAvailable(tabIds, syncSettings);
+    const groupedIds = hiddenIds.length > 0 ? [] : await this.groupTabsIfAvailable(preparedTabs, syncSettings);
+    let discardResult = { success: true, unloaded: 0 };
+
+    if (syncSettings.stashDiscardTabs !== false) {
+      discardResult = await this.discardTabs(preparedTabs);
+    }
+
+    return {
+      success: hiddenIds.length > 0 || groupedIds.length > 0 || discardResult.success,
+      unloaded: tabIds.length,
+      behavior: 'stash',
+      hidden: hiddenIds.length,
+      grouped: groupedIds.length,
+      discarded: discardResult.unloaded || 0
+    };
+  }
+
+  async restoreTabs(tabs, syncSettings = {}) {
+    const validTabs = Array.isArray(tabs) ? tabs.filter(tab => tab?.id !== undefined && tab?.id !== null) : [];
+    if (validTabs.length === 0) return;
+
+    const tabIds = validTabs.map(tab => tab.id);
+    if (typeof this.tabsAPI.show === 'function') {
+      try {
+        await this.tabsAPI.show(tabIds);
+      } catch (error) {
+        console.warn('Failed to show stashed tabs:', error?.message || error);
+      }
+    }
+
+    await this.ungroupStashedTabs(validTabs, syncSettings);
+  }
+
   // Update tab
   async updateTab(tabId, updateProperties) {
     try {
@@ -409,6 +492,95 @@ export class TabManager {
     } catch (error) {
       console.error('Failed to update tab:', error);
       return null;
+    }
+  }
+
+  async prepareTabsForUnload(tabs) {
+    const allTabs = await this.getAllTabs();
+    const unloadIds = new Set(tabs.map(tab => tab.id));
+    const tabsByWindow = new Map();
+
+    for (const tab of tabs) {
+      if (!tab.active) continue;
+      const windowTabs = tabsByWindow.get(tab.windowId) || [];
+      windowTabs.push(tab);
+      tabsByWindow.set(tab.windowId, windowTabs);
+    }
+
+    for (const [windowId] of tabsByWindow) {
+      const replacement = allTabs.find(tab => tab.windowId === windowId && !unloadIds.has(tab.id));
+      if (replacement) {
+        await this.tabsAPI.update(replacement.id, { active: true });
+      } else {
+        await this.openEmptyTab({ active: true, windowId });
+      }
+    }
+
+    return tabs;
+  }
+
+  async hideTabsIfAvailable(tabIds, syncSettings = {}) {
+    if (syncSettings.firefoxHideStashedTabs === false || typeof this.tabsAPI.hide !== 'function') return [];
+
+    try {
+      return await this.tabsAPI.hide(tabIds);
+    } catch (error) {
+      console.warn('Failed to hide stashed tabs:', error?.message || error);
+      return [];
+    }
+  }
+
+  async groupTabsIfAvailable(tabs, syncSettings = {}) {
+    if (!this.tabGroupsAPI || typeof this.tabsAPI.group !== 'function' || typeof this.tabGroupsAPI.update !== 'function') return [];
+
+    const tabsByWindow = new Map();
+    for (const tab of tabs) {
+      const windowTabs = tabsByWindow.get(tab.windowId) || [];
+      windowTabs.push(tab);
+      tabsByWindow.set(tab.windowId, windowTabs);
+    }
+
+    const groupedIds = [];
+    try {
+      for (const windowTabs of tabsByWindow.values()) {
+        const tabIds = windowTabs.map(tab => tab.id);
+        const groupId = await this.tabsAPI.group({ tabIds });
+        await this.tabGroupsAPI.update(groupId, {
+          collapsed: true,
+          title: syncSettings.chromiumStashGroupName || 'Closed tabs',
+          color: 'grey'
+        });
+        groupedIds.push(...tabIds);
+      }
+      return groupedIds;
+    } catch (error) {
+      console.warn('Failed to group stashed tabs:', error?.message || error);
+      return [];
+    }
+  }
+
+  async ungroupStashedTabs(tabs, syncSettings = {}) {
+    if (!this.tabGroupsAPI || typeof this.tabsAPI.ungroup !== 'function' || typeof this.tabGroupsAPI.get !== 'function') return;
+
+    const expectedGroupName = syncSettings.chromiumStashGroupName || 'Closed tabs';
+    const tabIdsToUngroup = [];
+    for (const tab of tabs) {
+      if (!Number.isInteger(tab.groupId) || tab.groupId < 0) continue;
+
+      try {
+        const group = await this.tabGroupsAPI.get(tab.groupId);
+        if (group?.title === expectedGroupName) tabIdsToUngroup.push(tab.id);
+      } catch {
+        // Group may have disappeared already.
+      }
+    }
+
+    if (tabIdsToUngroup.length > 0) {
+      try {
+        await this.tabsAPI.ungroup(tabIdsToUngroup);
+      } catch (error) {
+        console.warn('Failed to ungroup restored stashed tabs:', error?.message || error);
+      }
     }
   }
 
@@ -641,6 +813,7 @@ export class TabManager {
         if (existingTabs.length > 0 && !options.allowDuplicates) {
           // Focus existing tab instead
           const existingTab = existingTabs[0];
+          await this.restoreTabs([existingTab], options.syncSettings || {});
           await this.tabsAPI.update(existingTab.id, { active: true });
           await this.windowsAPI.update(existingTab.windowId, { focused: true });
 
@@ -710,13 +883,17 @@ export class TabManager {
     const maxConcurrent = Math.max(1, options.maxConcurrent || 20);
     const delayMs = options.delayMs || 0;
 
-    const work = documents.map((document) => {
+    const work = [];
+    for (const document of documents) {
       const urlKey = normalizeTabUrl(document.data.url, syncSettings);
       const duplicate = openUrls.has(urlKey) || queuedUrls.has(urlKey);
       if (!options.allowDuplicates && duplicate) {
         const existingTab = this.findDuplicateTabsInList(document.data.url, allTabs, syncSettings)[0] || null;
-        if (existingTab) this.markTabAsSynced(existingTab.id, document.id, document.data?.url);
-        return {
+        if (existingTab) {
+          await this.restoreTabs([existingTab], syncSettings);
+          this.markTabAsSynced(existingTab.id, document.id, document.data?.url);
+        }
+        work.push({
           document,
           skipped: true,
           result: {
@@ -725,12 +902,13 @@ export class TabManager {
             skipped: true,
             message: existingTab ? 'Focused existing tab' : 'Duplicate tab already queued'
           }
-        };
+        });
+        continue;
       }
 
       queuedUrls.add(urlKey);
-      return { document, skipped: false };
-    });
+      work.push({ document, skipped: false });
+    }
 
     const results = [];
     for (let i = 0; i < work.length; i += maxConcurrent) {

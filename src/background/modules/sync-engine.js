@@ -415,25 +415,16 @@ export class SyncEngine {
 
       // If we have URLs, close matching tabs
       if (urlsToClose.size > 0) {
-        console.log('SyncEngine: Closing tabs for removed documents:', Array.from(urlsToClose));
+        console.log('SyncEngine: Unloading tabs for removed documents:', Array.from(urlsToClose));
 
-        // Get all browser tabs
-        const browserTabs = await tabManager.getAllTabs();
-
-        // Find and close tabs matching the removed document URLs
-        for (const tab of browserTabs) {
-          if (urlsToClose.has(tab.url)) {
-            console.log('SyncEngine: Closing tab:', tab.title, tab.url);
-            await tabManager.closeTab(tab.id);
-          }
-        }
+        const tabsToUnload = await tabManager.findTabsMatchingUrls(Array.from(urlsToClose), syncSettings);
+        await tabManager.unloadTabs(tabsToUnload, syncSettings);
       } else if (documentIds.length > 0) {
         const trackedTabIds = tabManager.getTrackedTabIdsByDocumentIds(documentIds);
         if (trackedTabIds.length > 0) {
-          console.log('SyncEngine: Closing tracked tabs for removed document IDs:', trackedTabIds);
-          for (const tabId of trackedTabIds) {
-            await tabManager.closeTab(tabId);
-          }
+          console.log('SyncEngine: Unloading tracked tabs for removed document IDs:', trackedTabIds);
+          const tabsToUnload = (await Promise.all(trackedTabIds.map(tabId => tabManager.getTab(tabId)))).filter(Boolean);
+          await tabManager.unloadTabs(tabsToUnload, syncSettings);
           return;
         }
 
@@ -487,8 +478,9 @@ export class SyncEngine {
           continue;
         }
 
-        console.log('SyncEngine: Closing stale tracked tab:', trackedTab.tabId, trackedTab.documentId);
-        await tabManager.closeTab(trackedTab.tabId);
+        console.log('SyncEngine: Unloading stale tracked tab:', trackedTab.tabId, trackedTab.documentId);
+        const tab = await tabManager.getTab(trackedTab.tabId);
+        if (tab) await tabManager.unloadTabs([tab], syncSettings);
       }
     } catch (error) {
       console.error('SyncEngine: Failed to reconcile tracked tabs:', error);
@@ -1071,14 +1063,27 @@ export class SyncEngine {
   // Helper: Close all browser tabs (with safety to prevent browser exit)
   async closeAllBrowserTabs() {
     const browserTabs = await tabManager.getSyncableTabs();
+    const syncSettings = await browserStorage.getSyncSettings();
+    await this.unloadTabsForContextChange(browserTabs, syncSettings);
+  }
 
-    // Safety: If closing all tabs would leave browser empty, open a new tab first
-    if (await this.wouldLeaveEmptyBrowser(browserTabs)) {
-      console.log('SyncEngine: Would close all tabs - opening new tab to prevent browser exit');
-      await tabManager.openTab('chrome://newtab/', { active: false });
+  async unloadTabsForContextChange(tabs, syncSettings) {
+    const tabsToUnload = Array.isArray(tabs) ? tabs.filter(Boolean) : [];
+    if (tabsToUnload.length === 0) return;
+
+    if ((syncSettings?.contextUnloadBehavior || 'close') !== 'close') {
+      const result = await tabManager.unloadTabs(tabsToUnload, syncSettings);
+      console.log('SyncEngine: Unloaded tabs for context change:', result);
+      return;
     }
 
-    for (const tab of browserTabs) {
+    // Safety: If closing these tabs would leave browser empty, open a new tab first.
+    if (await this.wouldLeaveEmptyBrowser(tabsToUnload)) {
+      console.log('SyncEngine: Would close all tabs - opening new tab to prevent browser exit');
+      await tabManager.openEmptyTab({ active: false });
+    }
+
+    for (const tab of tabsToUnload) {
       await tabManager.closeTab(tab.id);
     }
   }
@@ -1138,19 +1143,7 @@ export class SyncEngine {
         }
       }
 
-      // Safety: If closing these tabs would leave browser empty, open a new tab first
-      if (await this.wouldLeaveEmptyBrowser(tabsToClose)) {
-        console.log('SyncEngine: Would close all tabs not in context - opening new tab to prevent browser exit');
-        await tabManager.openTab('chrome://newtab/', { active: false });
-      }
-
-      // Close tabs that are not in the new context
-      let closedCount = 0;
-      for (const tab of tabsToClose) {
-        console.log('SyncEngine: Closing tab not in context:', tab.title, tab.url);
-        await tabManager.closeTab(tab.id);
-        closedCount++;
-      }
+      await this.unloadTabsForContextChange(tabsToClose, syncSettings);
 
       // Log summary of what was kept vs closed
       for (const tab of browserTabs) {
@@ -1161,7 +1154,7 @@ export class SyncEngine {
         }
       }
 
-      console.log('SyncEngine: Closed', closedCount, 'tabs not in context');
+      console.log('SyncEngine: Unloaded', tabsToClose.length, 'tabs not in context');
 
     } catch (error) {
       console.error('SyncEngine: Failed to close tabs not in context:', error);
@@ -1208,17 +1201,8 @@ export class SyncEngine {
       }
     }
 
-    // Safety: If closing these tabs would leave browser empty, open a new tab first
-    if (await this.wouldLeaveEmptyBrowser(tabsToClose)) {
-      console.log('SyncEngine: Would close all tabs - opening new tab to prevent browser exit');
-      await tabManager.openTab('chrome://newtab/', { active: false });
-    }
-
-    // Close all the tabs
-    for (const tab of tabsToClose) {
-      console.log('SyncEngine: Closing tab:', tab.title, tab.url);
-      await tabManager.closeTab(tab.id);
-    }
+    const syncSettings = await browserStorage.getSyncSettings();
+    await this.unloadTabsForContextChange(tabsToClose, syncSettings);
   }
 
   // Helper: Fetch and open new tabs based on mode

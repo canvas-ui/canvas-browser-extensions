@@ -17,6 +17,7 @@ let contextSettings, contextSelect, bindContextBtn;
 let currentContext, boundContextId, boundContextUrl;
 let openTabsAddedToCanvas, closeTabsRemovedFromCanvas, sendNewTabsToCanvas, removeClosedTabsFromCanvas;
 let removeUtmParameters;
+let contextUnloadBehavior, stashOptions, stashDiscardTabs, firefoxHideStashedTabs, chromiumStashGroupName;
 let syncOnlyCurrentBrowser, syncOnlyTaggedTabs, syncTagFilter;
 let saveSettingsBtn, saveAndCloseBtn, resetSettingsBtn;
 let refreshTabSyncDebugBtn, copyTabSyncDebugBtn, tabSyncDebugSummary, tabSyncDebugOutput;
@@ -113,6 +114,11 @@ function initializeElements() {
   sendNewTabsToCanvas = document.getElementById('sendNewTabsToCanvas');
   removeClosedTabsFromCanvas = document.getElementById('removeClosedTabsFromCanvas');
   removeUtmParameters = document.getElementById('removeUtmParameters');
+  contextUnloadBehavior = document.getElementById('contextUnloadBehavior');
+  stashOptions = document.getElementById('stashOptions');
+  stashDiscardTabs = document.getElementById('stashDiscardTabs');
+  firefoxHideStashedTabs = document.getElementById('firefoxHideStashedTabs');
+  chromiumStashGroupName = document.getElementById('chromiumStashGroupName');
 
   // Sync filtering options
   syncOnlyCurrentBrowser = document.getElementById('syncOnlyCurrentBrowser');
@@ -181,6 +187,7 @@ function setupEventListeners() {
     }
   });
 
+  contextUnloadBehavior.addEventListener('change', updateUnloadOptionsVisibility);
 
 }
 
@@ -236,6 +243,10 @@ async function loadSettings() {
         sendNewTabsToCanvas: savedSyncSettings.sendNewTabsToCanvas || false,
         removeClosedTabsFromCanvas: savedSyncSettings.removeClosedTabsFromCanvas || false,
         removeUtmParameters: savedSyncSettings.removeUtmParameters ?? true,
+        contextUnloadBehavior: savedSyncSettings.contextUnloadBehavior || 'close',
+        stashDiscardTabs: savedSyncSettings.stashDiscardTabs ?? true,
+        firefoxHideStashedTabs: savedSyncSettings.firefoxHideStashedTabs ?? true,
+        chromiumStashGroupName: savedSyncSettings.chromiumStashGroupName || 'Closed tabs',
         syncOnlyCurrentBrowser: savedSyncSettings.syncOnlyCurrentBrowser || false,
         syncOnlyTaggedTabs: savedSyncSettings.syncOnlyTaggedTabs || false,
         syncTagFilter: savedSyncSettings.syncTagFilter || ''
@@ -281,7 +292,12 @@ async function loadSettings() {
         openTabsAddedToCanvas: false,
         closeTabsRemovedFromCanvas: false,
         sendNewTabsToCanvas: false,
-        removeClosedTabsFromCanvas: false
+        removeClosedTabsFromCanvas: false,
+        removeUtmParameters: true,
+        contextUnloadBehavior: 'close',
+        stashDiscardTabs: true,
+        firefoxHideStashedTabs: true,
+        chromiumStashGroupName: 'Closed tabs'
       },
       browserIdentity: getDefaultBrowserIdentity(),
       currentContext: null
@@ -313,6 +329,11 @@ function populateForm() {
   sendNewTabsToCanvas.checked = settings.syncSettings.sendNewTabsToCanvas;
   removeClosedTabsFromCanvas.checked = settings.syncSettings.removeClosedTabsFromCanvas;
   if (removeUtmParameters) removeUtmParameters.checked = settings.syncSettings.removeUtmParameters ?? true;
+  contextUnloadBehavior.value = settings.syncSettings.contextUnloadBehavior || 'close';
+  stashDiscardTabs.checked = settings.syncSettings.stashDiscardTabs ?? true;
+  firefoxHideStashedTabs.checked = settings.syncSettings.firefoxHideStashedTabs ?? true;
+  chromiumStashGroupName.value = settings.syncSettings.chromiumStashGroupName || 'Closed tabs';
+  updateUnloadOptionsVisibility();
 
   // Sync filtering options
   syncOnlyCurrentBrowser.checked = settings.syncSettings.syncOnlyCurrentBrowser;
@@ -793,6 +814,11 @@ function updateModeVisibility(mode) {
   }
 }
 
+function updateUnloadOptionsVisibility() {
+  if (!stashOptions || !contextUnloadBehavior) return;
+  stashOptions.style.display = contextUnloadBehavior.value === 'stash' ? 'block' : 'none';
+}
+
 async function handleModeChange() {
   const selectedMode = syncModeSelect.value;
   currentMode = selectedMode;
@@ -942,6 +968,10 @@ async function handleSaveSettings() {
         sendNewTabsToCanvas: sendNewTabsToCanvas.checked,
         removeClosedTabsFromCanvas: removeClosedTabsFromCanvas.checked,
         removeUtmParameters: removeUtmParameters?.checked ?? true,
+        contextUnloadBehavior: contextUnloadBehavior.value,
+        stashDiscardTabs: stashDiscardTabs.checked,
+        firefoxHideStashedTabs: firefoxHideStashedTabs.checked,
+        chromiumStashGroupName: chromiumStashGroupName.value.trim() || 'Closed tabs',
         syncOnlyCurrentBrowser: syncOnlyCurrentBrowser.checked,
         syncOnlyTaggedTabs: syncOnlyTaggedTabs.checked,
         syncTagFilter: syncTagFilter.value.trim()
@@ -956,6 +986,7 @@ async function handleSaveSettings() {
 
     if (saveResponse.success) {
       settings.connectionSettings = { ...settings.connectionSettings, ...allSettings.connectionSettings };
+      settings.syncSettings = { ...settings.syncSettings, ...allSettings.syncSettings };
       settings.browserIdentity = allSettings.browserIdentity;
       showToast('Settings saved successfully! Extension is fully configured.', 'success');
     } else {

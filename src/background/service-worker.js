@@ -2433,11 +2433,9 @@ async function handleRemoveCanvasDocument(data, sendResponse) {
 
     // Close tab only if user setting allows it and the operation was successful
     if (result.success && document.data?.url && syncSettings.closeTabsRemovedFromCanvas) {
-      console.log('Closing browser tabs for removed/deleted document due to user setting');
-      const tabs = await tabManager.findDuplicateTabs(document.data.url);
-      for (const tab of tabs) {
-        await tabManager.closeTab(tab.id);
-      }
+      console.log('Unloading browser tabs for removed/deleted document due to user setting');
+      const tabs = await tabManager.findTabsMatchingUrls([document.data.url], syncSettings);
+      await tabManager.unloadTabs(tabs, syncSettings);
     } else if (result.success && document.data?.url) {
       console.log('Not closing browser tabs - closeTabsRemovedFromCanvas setting is disabled');
     }
@@ -2495,7 +2493,7 @@ async function handleRemoveCanvasDocuments(data, sendResponse) {
       const urls = items.map(doc => doc.data?.url).filter(Boolean);
       const matchingTabs = await tabManager.findTabsMatchingUrls(urls, syncSettings);
       if (matchingTabs.length > 0) {
-        await tabManager.closeTabs(matchingTabs.map(tab => tab.id));
+        await tabManager.unloadTabs(matchingTabs, syncSettings);
       }
     }
 

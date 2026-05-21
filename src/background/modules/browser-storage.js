@@ -48,6 +48,10 @@ export class BrowserStorage {
         sendNewTabsToCanvas: false,          // Send newly opened browser tabs to Canvas Server
         removeClosedTabsFromCanvas: false,   // Remove closed browser tabs from Canvas Server
         removeUtmParameters: true,           // Strip utm_* query params from URLs before syncing
+        contextUnloadBehavior: 'close',      // 'close' | 'discard' | 'stash'
+        stashDiscardTabs: true,              // Discard tabs after stashing them
+        firefoxHideStashedTabs: true,        // Firefox-only: hide stashed tabs from the tab strip
+        chromiumStashGroupName: 'Closed tabs',
         contextChangeBehavior: 'keep-only'  // How to handle context changes: 'close-open-new', 'save-close-open-new', 'keep-open-new', 'keep-only'
       },
       [this.KEYS.CURRENT_CONTEXT]: null,

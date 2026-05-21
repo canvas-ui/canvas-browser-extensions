@@ -248,6 +248,40 @@
           <small class="help-text">Strips <code>utm_*</code> query params before sending URLs (reduces backend duplicates)</small>
         </div>
 
+        <div class="form-group">
+          <label for="contextUnloadBehavior">When tabs leave the current context</label>
+          <select id="contextUnloadBehavior" class="input-field">
+            <option value="close">Close tabs</option>
+            <option value="discard">Keep visible and unload memory</option>
+            <option value="stash">Stash tabs using browser features</option>
+          </select>
+          <small class="help-text">Stash uses Firefox hidden tabs where available, or collapsed Chromium tab groups.</small>
+        </div>
+
+        <div id="stashOptions" style="display: none;">
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="stashDiscardTabs">
+              Discard stashed tabs
+            </label>
+            <small class="help-text">Unload tab memory after stashing. Usually what you want unless a page is made of glass.</small>
+          </div>
+
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="firefoxHideStashedTabs">
+              Hide stashed tabs in Firefox
+            </label>
+            <small class="help-text">Requires Firefox tab hiding permission. If disabled, Firefox falls back to discard-only behavior.</small>
+          </div>
+
+          <div class="form-group">
+            <label for="chromiumStashGroupName">Chromium stash group name</label>
+            <input type="text" id="chromiumStashGroupName" class="input-field" placeholder="Closed tabs">
+            <small class="help-text">Used for the collapsed tab group that stores inactive context tabs.</small>
+          </div>
+        </div>
+
         <h3>Sync Filtering Options</h3>
 
         <div class="form-group">

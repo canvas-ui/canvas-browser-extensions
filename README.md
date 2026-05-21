@@ -1,6 +1,14 @@
 # Canvas Browser Extension
 
-A browser extension for seamlessly syncing browser tabs with Canvas server. Extension allows you to (aot) connect several users / browsers / applications to a single shared context and working with tabs collaboratively.
+A browser extension for seamlessly syncing browser tabs with Canvas server. 
+
+The main functionality is to bind to a specific canvas-server "context"(think of it as a shareable session) and update tabs dynamically whenever the context changes.  
+
+A more practical example: Switch your context named "work" from `universe://work/customer-a/projects/foo` to `universe://work/customer-a/devops/jira-1234`, browser automatically closes/hides existing open tabs and opens/shows tabs related to the particular context.  
+
+Switching back-and-forth between your tasks organized in a virtual "context" tree autoloads relevant content(globaly, in all bound apps - emails, files, notes, dotfiles aaand with this extension browser tabs).
+
+Extension allows you to (aot) work with tabs collaboratively, your significant other can bind to your context and open/close tabs in real-time, lets say to collaboratively pick an airbnb rental.
 
 ## Screenshots
 
@@ -88,11 +96,11 @@ For developers and testing:
 
 ## Browser Compatibility
 
-- **Chrome**: v88+
-- **Edge**: v88+
+- **Chrome**: v89+
+- **Edge**: v89+
 - **Firefox**: v109+
-- **Brave**: v1.20+
-- **Opera**: v74+
+- **Brave**: v1.22+
+- **Opera**: v75+
 
 ## License
 
