@@ -51,7 +51,7 @@ export class BrowserStorage {
         contextUnloadBehavior: 'close',      // 'close' | 'discard' | 'stash'
         stashDiscardTabs: true,              // Discard tabs after stashing them
         firefoxHideStashedTabs: true,        // Firefox-only: hide stashed tabs from the tab strip
-        chromiumStashGroupName: 'Closed tabs',
+        chromiumStashGroupName: 'Stashed',
         canvasTabsFetchLimit: 200,
         contextChangeBehavior: 'keep-only'  // How to handle context changes: 'close-open-new', 'save-close-open-new', 'keep-open-new', 'keep-only'
       },

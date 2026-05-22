@@ -247,7 +247,7 @@ async function loadSettings() {
         contextUnloadBehavior: savedSyncSettings.contextUnloadBehavior || 'close',
         stashDiscardTabs: savedSyncSettings.stashDiscardTabs ?? true,
         firefoxHideStashedTabs: savedSyncSettings.firefoxHideStashedTabs ?? true,
-        chromiumStashGroupName: savedSyncSettings.chromiumStashGroupName || 'Closed tabs',
+        chromiumStashGroupName: savedSyncSettings.chromiumStashGroupName || 'Stashed',
         canvasTabsFetchLimit: savedSyncSettings.canvasTabsFetchLimit || 200,
         syncOnlyCurrentBrowser: savedSyncSettings.syncOnlyCurrentBrowser || false,
         syncOnlyTaggedTabs: savedSyncSettings.syncOnlyTaggedTabs || false,
@@ -299,7 +299,7 @@ async function loadSettings() {
         contextUnloadBehavior: 'close',
         stashDiscardTabs: true,
         firefoxHideStashedTabs: true,
-        chromiumStashGroupName: 'Closed tabs',
+        chromiumStashGroupName: 'Stashed',
         canvasTabsFetchLimit: 200
       },
       browserIdentity: getDefaultBrowserIdentity(),
@@ -335,7 +335,7 @@ function populateForm() {
   contextUnloadBehavior.value = settings.syncSettings.contextUnloadBehavior || 'close';
   stashDiscardTabs.checked = settings.syncSettings.stashDiscardTabs ?? true;
   firefoxHideStashedTabs.checked = settings.syncSettings.firefoxHideStashedTabs ?? true;
-  chromiumStashGroupName.value = settings.syncSettings.chromiumStashGroupName || 'Closed tabs';
+  chromiumStashGroupName.value = settings.syncSettings.chromiumStashGroupName || 'Stashed';
   canvasTabsFetchLimit.value = String(normalizeCanvasTabsFetchLimit(settings.syncSettings.canvasTabsFetchLimit));
   updateUnloadOptionsVisibility();
 
@@ -981,7 +981,7 @@ async function handleSaveSettings() {
         contextUnloadBehavior: contextUnloadBehavior.value,
         stashDiscardTabs: stashDiscardTabs.checked,
         firefoxHideStashedTabs: firefoxHideStashedTabs.checked,
-        chromiumStashGroupName: chromiumStashGroupName.value.trim() || 'Closed tabs',
+        chromiumStashGroupName: chromiumStashGroupName.value.trim() || 'Stashed',
         canvasTabsFetchLimit: normalizeCanvasTabsFetchLimit(canvasTabsFetchLimit.value),
         syncOnlyCurrentBrowser: syncOnlyCurrentBrowser.checked,
         syncOnlyTaggedTabs: syncOnlyTaggedTabs.checked,

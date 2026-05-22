@@ -272,7 +272,7 @@ export class TabManager {
   }
 
   async annotateStashedTabs(tabs, syncSettings = {}) {
-    const groupTitle = syncSettings.chromiumStashGroupName || 'Closed tabs';
+    const groupTitle = syncSettings.chromiumStashGroupName || 'Stashed';
     const groupTitleById = new Map();
 
     if (this.tabGroupsAPI && typeof this.tabGroupsAPI.get === 'function') {
@@ -575,7 +575,7 @@ export class TabManager {
   async groupTabsIfAvailable(tabs, syncSettings = {}) {
     if (!this.tabGroupsAPI || typeof this.tabsAPI.group !== 'function' || typeof this.tabGroupsAPI.update !== 'function') return [];
 
-    const groupTitle = syncSettings.chromiumStashGroupName || 'Closed tabs';
+    const groupTitle = syncSettings.chromiumStashGroupName || 'Stashed';
     const candidateTabs = tabs.filter(tab => !tab.pinned);
     if (candidateTabs.length === 0) return [];
     const groupedIds = [];
@@ -634,7 +634,7 @@ export class TabManager {
   async ungroupStashedTabs(tabs, syncSettings = {}) {
     if (!this.tabGroupsAPI || typeof this.tabsAPI.ungroup !== 'function' || typeof this.tabGroupsAPI.get !== 'function') return;
 
-    const expectedGroupName = syncSettings.chromiumStashGroupName || 'Closed tabs';
+    const expectedGroupName = syncSettings.chromiumStashGroupName || 'Stashed';
     const tabIdsToUngroup = [];
     for (const tab of tabs) {
       if (!Number.isInteger(tab.groupId) || tab.groupId < 0) continue;
