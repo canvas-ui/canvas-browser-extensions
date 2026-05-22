@@ -708,7 +708,7 @@ Firefox blocks local network requests for security reasons.
     return await this.get(this.getWorkspaceTreeRoute(workspaceNameOrId));
   }
 
-  async getWorkspaceDocuments(workspaceNameOrId, contextSpec = '/', featureArray = []) {
+  async getWorkspaceDocuments(workspaceNameOrId, contextSpec = '/', featureArray = [], options = {}) {
     await this.ensureWorkspaceStarted(workspaceNameOrId);
     const enhancedFeatureArray = [...featureArray];
     if (!enhancedFeatureArray.includes('data/abstraction/tab')) {
@@ -723,6 +723,8 @@ Firefox blocks local network requests for security reasons.
     if (enhancedFeatureArray.length > 0) {
       enhancedFeatureArray.forEach(feature => params.append('allOf', feature));
     }
+    if (Number.isFinite(options.limit)) params.set('limit', String(options.limit));
+    if (Number.isFinite(options.offset)) params.set('offset', String(options.offset));
 
     const query = params.toString();
     if (query) endpoint += `?${query}`;
@@ -792,7 +794,7 @@ Firefox blocks local network requests for security reasons.
   }
 
   // Document methods (tabs)
-  async getContextDocuments(contextId, featureArray = []) {
+  async getContextDocuments(contextId, featureArray = [], options = {}) {
     // Always ensure we're looking for tab documents
     const enhancedFeatureArray = [...featureArray];
     if (!enhancedFeatureArray.includes('data/abstraction/tab')) {
@@ -813,12 +815,16 @@ Firefox blocks local network requests for security reasons.
 
     let endpoint = `/contexts/${contextId}/documents`;
 
+    const params = new URLSearchParams();
+
     // Add feature array as query parameters if provided
     if (enhancedFeatureArray.length > 0) {
-      const params = new URLSearchParams();
       enhancedFeatureArray.forEach(feature => params.append('allOf', feature));
-      endpoint += `?${params.toString()}`;
     }
+    if (Number.isFinite(options.limit)) params.set('limit', String(options.limit));
+    if (Number.isFinite(options.offset)) params.set('offset', String(options.offset));
+    const query = params.toString();
+    if (query) endpoint += `?${query}`;
 
     return await this.get(endpoint);
   }

@@ -263,11 +263,39 @@ export class TabManager {
   async getAllTabs() {
     try {
       const tabs = await this.tabsAPI.query({});
-      return tabs;
+      const syncSettings = await browserStorage.getSyncSettings();
+      return await this.annotateStashedTabs(tabs, syncSettings);
     } catch (error) {
       console.error('Failed to get all tabs:', error);
       return [];
     }
+  }
+
+  async annotateStashedTabs(tabs, syncSettings = {}) {
+    const groupTitle = syncSettings.chromiumStashGroupName || 'Closed tabs';
+    const groupTitleById = new Map();
+
+    if (this.tabGroupsAPI && typeof this.tabGroupsAPI.get === 'function') {
+      const groupIds = new Set(
+        tabs
+          .map(tab => tab.groupId)
+          .filter(groupId => Number.isInteger(groupId) && groupId >= 0)
+      );
+
+      for (const groupId of groupIds) {
+        try {
+          const group = await this.tabGroupsAPI.get(groupId);
+          groupTitleById.set(groupId, group?.title || '');
+        } catch {
+          groupTitleById.set(groupId, '');
+        }
+      }
+    }
+
+    return tabs.map(tab => ({
+      ...tab,
+      stashed: tab.hidden === true || groupTitleById.get(tab.groupId) === groupTitle
+    }));
   }
 
   // Get tabs that should be synced
@@ -293,7 +321,7 @@ export class TabManager {
   }
 
   isActiveSyncCandidate(tab) {
-    return this.shouldSyncTab(tab) && tab.discarded !== true && tab.hidden !== true;
+    return this.shouldSyncTab(tab) && tab.discarded !== true && tab.hidden !== true && tab.stashed !== true;
   }
 
   // Get unsynced tabs
@@ -548,45 +576,45 @@ export class TabManager {
     if (!this.tabGroupsAPI || typeof this.tabsAPI.group !== 'function' || typeof this.tabGroupsAPI.update !== 'function') return [];
 
     const groupTitle = syncSettings.chromiumStashGroupName || 'Closed tabs';
-    const tabsByWindow = new Map();
-    for (const tab of tabs) {
-      const windowTabs = tabsByWindow.get(tab.windowId) || [];
-      windowTabs.push(tab);
-      tabsByWindow.set(tab.windowId, windowTabs);
-    }
-
+    const candidateTabs = tabs.filter(tab => !tab.pinned);
+    if (candidateTabs.length === 0) return [];
     const groupedIds = [];
-    for (const windowTabs of tabsByWindow.values()) {
-      try {
-        const windowId = windowTabs[0].windowId;
-        let groupId = await this.getExistingStashGroupId(windowId, groupTitle);
-        const tabIds = [];
-        for (const tab of windowTabs) {
-          if (await this.isTabInGroup(tab, groupId, groupTitle)) continue;
-          tabIds.push(tab.id);
-        }
-        if (tabIds.length === 0) continue;
 
-        groupId = groupId === null
-          ? await this.tabsAPI.group({ tabIds, createProperties: { windowId } })
-          : await this.tabsAPI.group({ tabIds, groupId });
-        await this.tabGroupsAPI.update(groupId, {
-          collapsed: true,
-          title: groupTitle,
-          color: 'grey'
-        });
-        groupedIds.push(...tabIds);
-      } catch (error) {
-        console.warn('Failed to group stashed tabs in window:', error?.message || error);
+    try {
+      const group = await this.getExistingStashGroup(groupTitle);
+      let groupId = group?.id ?? null;
+      const targetWindowId = group?.windowId ?? candidateTabs[0].windowId;
+
+      const tabIds = [];
+      for (const tab of candidateTabs) {
+        if (await this.isTabInGroup(tab, groupId, groupTitle)) continue;
+        if (tab.windowId !== targetWindowId) {
+          await this.tabsAPI.move(tab.id, { windowId: targetWindowId, index: -1 });
+        }
+        tabIds.push(tab.id);
       }
+      if (tabIds.length === 0) return groupedIds;
+
+      groupId = groupId === null
+        ? await this.tabsAPI.group({ tabIds, createProperties: { windowId: targetWindowId } })
+        : await this.tabsAPI.group({ tabIds, groupId });
+      await this.tabGroupsAPI.update(groupId, {
+        collapsed: true,
+        title: groupTitle,
+        color: 'grey'
+      });
+      groupedIds.push(...tabIds);
+    } catch (error) {
+      console.warn('Failed to group stashed tabs:', error?.message || error);
     }
+
     return groupedIds;
   }
 
-  async getExistingStashGroupId(windowId, title) {
+  async getExistingStashGroup(title) {
     if (typeof this.tabGroupsAPI.query === 'function') {
-      const groups = await this.tabGroupsAPI.query({ windowId, title });
-      if (groups.length > 0) return groups[0].id;
+      const groups = await this.tabGroupsAPI.query({ title });
+      if (groups.length > 0) return groups[0];
     }
     return null;
   }

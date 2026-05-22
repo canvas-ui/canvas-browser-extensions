@@ -255,7 +255,9 @@
             <option value="discard">Keep visible and unload memory</option>
             <option value="stash">Stash tabs using browser features</option>
           </select>
-          <small class="help-text">Stash uses Firefox hidden tabs where available, or collapsed Chromium tab groups.</small>
+          <small class="help-text">
+            Close removes inactive context tabs. Unload keeps them visible but releases memory. Stash hides them in Firefox or moves them into a collapsed Chromium tab group.
+          </small>
         </div>
 
         <div id="stashOptions" style="display: none;">
@@ -280,6 +282,12 @@
             <input type="text" id="chromiumStashGroupName" class="input-field" placeholder="Closed tabs">
             <small class="help-text">Used for the collapsed tab group that stores inactive context tabs.</small>
           </div>
+        </div>
+
+        <div class="form-group">
+          <label for="canvasTabsFetchLimit">Canvas tab fetch limit</label>
+          <input type="number" id="canvasTabsFetchLimit" class="input-field" min="1" max="1000" step="1" value="200">
+          <small class="help-text">How many Canvas tab documents the popup fetches per page.</small>
         </div>
 
         <h3>Sync Filtering Options</h3>

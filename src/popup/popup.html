@@ -79,6 +79,9 @@
             <label class="checkbox-label">
               <input type="checkbox" id="showSyncedTabs"> Show already synced tabs
             </label>
+            <label class="checkbox-label">
+              <input type="checkbox" id="showHiddenTabs"> Show hidden/stashed tabs
+            </label>
           </div>
 
           <div class="tab-section">
@@ -144,7 +147,9 @@
                 <h3 id="canvasTabsHeader">Canvas Context Tabs</h3>
               </div>
               <div class="section-actions">
-                <button class="action-btn secondary" id="openAllBtn">Open All</button>
+                <button class="action-btn icon-btn secondary" id="canvasPrevPageBtn" title="Previous page">⏴</button>
+                <button class="action-btn icon-btn secondary" id="canvasNextPageBtn" title="Next page">⏵</button>
+                <button class="action-btn icon-btn secondary" id="openAllBtn" title="Open all fetched tabs">⏏</button>
               </div>
             </div>
             <div class="tab-list" id="canvasToBrowserList">

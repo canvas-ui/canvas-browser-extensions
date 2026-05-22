@@ -23,9 +23,9 @@ function createSvgIcon(pathsStr, size = 14) {
 
 // DOM elements
 let connectionStatus, connectionText, contextId, contextUrl;
-let searchInput, sendNewTabsToCanvas, openTabsAddedToCanvas, showSyncedTabs, showAllCanvasTabs;
+let searchInput, sendNewTabsToCanvas, openTabsAddedToCanvas, showSyncedTabs, showHiddenTabs, showAllCanvasTabs;
 let browserToCanvasList, canvasToBrowserList;
-let syncAllBtn, syncToAllBtn, closeAllBtn, openAllBtn, settingsBtn, dockBtn, logoBtn, selectorBtn;
+let syncAllBtn, syncToAllBtn, closeAllBtn, openAllBtn, canvasPrevPageBtn, canvasNextPageBtn, settingsBtn, dockBtn, logoBtn, selectorBtn;
 let browserBulkActions, canvasBulkActions;
 let syncSelectedBtn, syncToSelectedBtn, syncCloseSelectedBtn, closeSelectedBtn, openSelectedBtn, removeSelectedBtn, deleteSelectedBtn;
 let selectAllBrowser, selectAllCanvas;
@@ -57,10 +57,13 @@ let currentConnection = { connected: false, context: null, mode: 'explorer', wor
 let currentWorkspacePath = '/';
 let browserTabs = [];
 let canvasTabs = [];
-let allBrowserTabs = []; // All tabs including synced ones
+let allBrowserTabs = []; // Browser tabs available for the current Browser > Canvas filter
+let rawBrowserTabs = [];
 const syncedTabIds = new Set(); // Track which tabs are already synced
 let showingSyncedTabs = false; // Track checkbox state
+let showingHiddenTabs = false;
 let showingAllCanvasTabs = false; // Track show all Canvas tabs checkbox state
+let canvasPagination = { offset: 0, limit: 200, count: 0, totalCount: 0 };
 const selectedBrowserTabs = new Set();
 const selectedCanvasTabs = new Set();
 let currentTab = 'browser-to-canvas';
@@ -255,6 +258,7 @@ function initializeElements() {
   sendNewTabsToCanvas = document.getElementById('sendNewTabsToCanvas');
   openTabsAddedToCanvas = document.getElementById('openTabsAddedToCanvas');
   showSyncedTabs = document.getElementById('showSyncedTabs');
+  showHiddenTabs = document.getElementById('showHiddenTabs');
   showAllCanvasTabs = document.getElementById('showAllCanvasTabs');
   selectorBtn = document.getElementById('selectorBtn');
   settingsBtn = document.getElementById('settingsBtn');
@@ -274,6 +278,8 @@ function initializeElements() {
   syncToAllBtn = document.getElementById('syncToAllBtn');
   closeAllBtn = document.getElementById('closeAllBtn');
   openAllBtn = document.getElementById('openAllBtn');
+  canvasPrevPageBtn = document.getElementById('canvasPrevPageBtn');
+  canvasNextPageBtn = document.getElementById('canvasNextPageBtn');
 
   // Bulk actions
   browserBulkActions = document.getElementById('browserBulkActions');
@@ -364,7 +370,10 @@ function setupEventListeners() {
   sendNewTabsToCanvas.addEventListener('change', handleSyncSettingChange);
   openTabsAddedToCanvas.addEventListener('change', handleSyncSettingChange);
   showSyncedTabs.addEventListener('change', handleShowSyncedChange);
+  showHiddenTabs.addEventListener('change', handleShowHiddenChange);
   showAllCanvasTabs.addEventListener('change', handleShowAllCanvasChange);
+  canvasPrevPageBtn.addEventListener('click', () => void loadCanvasPage(canvasPagination.offset - canvasPagination.limit));
+  canvasNextPageBtn.addEventListener('click', () => void loadCanvasPage(canvasPagination.offset + canvasPagination.limit));
 
   // Action buttons
   syncAllBtn.addEventListener('click', () => handleSyncAll());
@@ -494,6 +503,8 @@ async function loadInitialData() {
     // Initialize checkbox states to ensure proper defaults
     showSyncedTabs.checked = false; // Default to showing only unsynced tabs
     showingSyncedTabs = false;
+    showHiddenTabs.checked = false;
+    showingHiddenTabs = false;
 
     // Initialize section header based on checkbox state
     const sectionHeader = document.querySelector('#browser-to-canvas .section-header h3');
@@ -504,12 +515,12 @@ async function loadInitialData() {
     // Initialize Canvas section header based on checkbox state
     showingAllCanvasTabs = showAllCanvasTabs?.checked || false;
 
+    // Load sync settings
+    await loadSyncSettings();
+
     // Load tabs if connected (or always load for debugging)
     console.log('Loading tabs...');
     await loadTabs();
-
-    // Load sync settings
-    await loadSyncSettings();
   } catch (error) {
     console.error('Failed to load initial data:', error);
   }
@@ -682,19 +693,21 @@ async function loadTabs() {
       sendMessageToBackground('GET_ALL_TABS'),
       fetchCurrentDocumentList()
     ]);
+    applyCanvasDocumentResponse(docsResponse);
 
     if (allTabsResponse.success) {
-      const rawTabs = allTabsResponse.tabs || [];
+      rawBrowserTabs = allTabsResponse.tabs || [];
 
       // Hidden/discarded tabs are managed state, not active Browser > Canvas sync candidates.
-      allBrowserTabs = rawTabs.filter(tab => !tab.discarded && !tab.hidden && !isInternalTab(tab));
-      const discardedCount = rawTabs.filter(tab => tab.discarded).length;
-      const hiddenCount = rawTabs.filter(tab => !tab.discarded && tab.hidden).length;
-      const internalCount = rawTabs.filter(tab => !tab.discarded && !tab.hidden && isInternalTab(tab)).length;
+      refreshBrowserTabFilter();
+      const discardedCount = rawBrowserTabs.filter(tab => tab.discarded).length;
+      const hiddenCount = rawBrowserTabs.filter(tab => !tab.discarded && tab.hidden).length;
+      const stashedCount = rawBrowserTabs.filter(tab => !tab.discarded && !tab.hidden && tab.stashed).length;
+      const internalCount = rawBrowserTabs.filter(tab => !tab.discarded && !tab.hidden && !tab.stashed && isInternalTab(tab)).length;
 
-      console.log(`All browser tabs loaded: ${allBrowserTabs.length} usable, ${discardedCount} discarded, ${hiddenCount} hidden, ${internalCount} internal (filtered out)`);
+      console.log(`All browser tabs loaded: ${allBrowserTabs.length} usable, ${discardedCount} discarded, ${hiddenCount} hidden, ${stashedCount} stashed, ${internalCount} internal (filtered out)`);
 
-      markSyncedBrowserTabs(docsResponse?.documents || []);
+      markSyncedBrowserTabs(canvasTabs);
 
       // Load pin state for all tabs
       await loadPinStates();
@@ -707,8 +720,7 @@ async function loadTabs() {
     }
 
     if (docsResponse?.success) {
-      canvasTabs = docsResponse.documents || [];
-      console.log('Canvas documents loaded:', canvasTabs.length);
+      console.log('Canvas documents loaded:', canvasTabs.length, canvasPagination);
       renderCanvasTabs();
     } else if (currentConnection.connected) {
       console.error('Failed to get Canvas documents:', docsResponse?.error);
@@ -741,15 +753,60 @@ async function fetchCurrentDocumentList() {
     return { success: true, documents: [] };
   }
 
+  const request = {
+    limit: canvasPagination.limit,
+    offset: canvasPagination.offset
+  };
+
   if (currentConnection.mode === 'context' && currentConnection.context) {
-    return await sendMessageToBackground('GET_CANVAS_DOCUMENTS');
+    return await sendMessageToBackground('GET_CANVAS_DOCUMENTS', request);
   }
 
   if (currentConnection.mode === 'explorer' && currentConnection.workspace) {
-    return await sendMessageToBackground('GET_WORKSPACE_DOCUMENTS', { contextSpec: currentWorkspacePath || '/' });
+    return await sendMessageToBackground('GET_WORKSPACE_DOCUMENTS', { ...request, contextSpec: currentWorkspacePath || '/' });
   }
 
   return { success: true, documents: [] };
+}
+
+function applyCanvasDocumentResponse(response) {
+  if (!response?.success) return;
+  canvasTabs = response.documents || [];
+  canvasPagination = {
+    ...canvasPagination,
+    count: response.count ?? canvasTabs.length,
+    totalCount: response.totalCount ?? canvasTabs.length,
+    offset: response.offset ?? canvasPagination.offset,
+    limit: response.limit ?? canvasPagination.limit
+  };
+  updateCanvasPaginationButtons();
+}
+
+function updateCanvasPaginationButtons() {
+  if (canvasPrevPageBtn) canvasPrevPageBtn.disabled = canvasPagination.offset <= 0;
+  if (canvasNextPageBtn) {
+    const nextOffset = canvasPagination.offset + canvasPagination.count;
+    canvasNextPageBtn.disabled = canvasPagination.totalCount <= 0 || nextOffset >= canvasPagination.totalCount;
+  }
+}
+
+function normalizeCanvasFetchLimit(value) {
+  const limit = Number(value);
+  if (!Number.isFinite(limit)) return 200;
+  return Math.min(1000, Math.max(1, Math.floor(limit)));
+}
+
+async function loadCanvasPage(offset) {
+  canvasPagination.offset = Math.max(0, offset);
+  selectedCanvasTabs.clear();
+  const response = await fetchCurrentDocumentList();
+  applyCanvasDocumentResponse(response);
+  if (!response.success) {
+    showToast(`Failed to load Canvas tabs: ${response.error}`, 'error');
+  }
+  renderCanvasTabs();
+  initializeFuseInstances();
+  updateTabCountHeaders();
 }
 
 function markSyncedBrowserTabs(documents) {
@@ -769,6 +826,14 @@ function markSyncedBrowserTabs(documents) {
   console.log('Synced tab IDs:', Array.from(syncedTabIds));
 }
 
+function refreshBrowserTabFilter() {
+  allBrowserTabs = rawBrowserTabs.filter(tab => {
+    if (isInternalTab(tab)) return false;
+    if (showingHiddenTabs) return true;
+    return tab.discarded !== true && tab.hidden !== true && tab.stashed !== true;
+  });
+}
+
 function applyOpenedCanvasDocuments(response, documents = []) {
   const results = Array.isArray(response?.results)
     ? response.results.map(item => item.result)
@@ -784,6 +849,12 @@ function applyOpenedCanvasDocuments(response, documents = []) {
       allBrowserTabs[existingIndex] = { ...allBrowserTabs[existingIndex], ...tab };
     } else {
       allBrowserTabs.push(tab);
+    }
+    const rawIndex = rawBrowserTabs.findIndex(item => item.id === tab.id);
+    if (rawIndex >= 0) {
+      rawBrowserTabs[rawIndex] = { ...rawBrowserTabs[rawIndex], ...tab };
+    } else {
+      rawBrowserTabs.push(tab);
     }
     if (document?.id) syncedTabIds.add(tab.id);
   });
@@ -890,10 +961,13 @@ async function loadSyncSettings() {
       // Update checkbox states to match saved settings
       sendNewTabsToCanvas.checked = settings.sendNewTabsToCanvas || false;
       openTabsAddedToCanvas.checked = settings.openTabsAddedToCanvas || false;
+      canvasPagination.limit = normalizeCanvasFetchLimit(settings.canvasTabsFetchLimit);
+      canvasPagination.offset = 0;
 
       console.log('Applied sync settings to UI:', {
         sendNewTabsToCanvas: sendNewTabsToCanvas.checked,
-        openTabsAddedToCanvas: openTabsAddedToCanvas.checked
+        openTabsAddedToCanvas: openTabsAddedToCanvas.checked,
+        canvasTabsFetchLimit: canvasPagination.limit
       });
     } else {
       console.warn('Failed to load sync settings:', response.error);
@@ -926,13 +1000,17 @@ function updateTabCountHeaders() {
 
   // Update canvas tabs header
   const filteredCanvasTabs = getFilteredCanvasTabs();
+  const totalCount = canvasPagination.totalCount || filteredCanvasTabs.length;
+  const fetchedCount = canvasPagination.count || canvasTabs.length;
+  const pageCount = `${fetchedCount}/${totalCount}`;
   if (isSearching) {
     const visibleCanvasTabs = canvasToBrowserList.querySelectorAll('.tab-item:not([style*="display: none"])').length;
     const totalCanvasTabs = filteredCanvasTabs.length;
-    canvasTabsHeader.textContent = `Canvas Context Tabs (${visibleCanvasTabs}/${totalCanvasTabs})`;
+    canvasTabsHeader.textContent = `Canvas Context Tabs (${visibleCanvasTabs}/${totalCanvasTabs}, fetched ${pageCount})`;
   } else {
-    canvasTabsHeader.textContent = `Canvas Context Tabs (${filteredCanvasTabs.length})`;
+    canvasTabsHeader.textContent = `Canvas Context Tabs (${filteredCanvasTabs.length}, fetched ${pageCount})`;
   }
+  updateCanvasPaginationButtons();
 }
 
 function updateWindowGroupVisibility() {
@@ -1076,7 +1154,6 @@ function renderBrowserTabs() {
         type: 'checkbox',
         'data-tab-id': tab.id
       });
-      if (isSynced) checkbox.disabled = true;
 
       // Preserve selection state
       if (selectedBrowserTabs.has(tab.id)) {
@@ -2161,6 +2238,7 @@ async function handlePathSubmit() {
     }
 
     // Refresh tabs with new path and navigate back to main view
+    canvasPagination.offset = 0;
     await loadTabs();
     navigateToView('main');
 
@@ -2366,6 +2444,7 @@ async function bindToContext(contextId, contextName, contextUrl) {
       // Set full context object from response to include all properties
       currentConnection.mode = 'context';
       currentConnection.context = response.context;
+      canvasPagination.offset = 0;
 
       // Persist mode and selection to storage
       await sendMessageToBackground('SET_MODE_AND_SELECTION', {
@@ -2410,6 +2489,7 @@ async function openWorkspace(workspaceId, workspaceName, workspaceLabel) {
       currentConnection.workspace = workspaceData;
       currentConnection.context = null;
       currentWorkspacePath = '/'; // Default to root
+      canvasPagination.offset = 0;
 
       // Update connection status display
       updateConnectionStatus(currentConnection);
@@ -2510,6 +2590,16 @@ function handleShowSyncedChange(event) {
   // Update filter and re-render browser tabs
   updateBrowserTabsFilter();
   renderBrowserTabs();
+}
+
+function handleShowHiddenChange(event) {
+  showingHiddenTabs = event.target.checked;
+  console.log('Show hidden/stashed tabs toggled:', showingHiddenTabs);
+  refreshBrowserTabFilter();
+  markSyncedBrowserTabs(canvasTabs);
+  updateBrowserTabsFilter();
+  renderBrowserTabs();
+  initializeFuseInstances();
 }
 
 function handleShowAllCanvasChange(event) {

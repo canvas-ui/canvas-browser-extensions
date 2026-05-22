@@ -2084,16 +2084,21 @@ async function handleGetCanvasDocuments(data, sendResponse) {
       );
     }
 
+    const limit = normalizeCanvasFetchLimit(data?.limit);
+    const offset = normalizeCanvasFetchOffset(data?.offset);
+
     // Fetch Canvas documents with tab schema filter
     const featureArray = ['data/abstraction/tab'];
-    const response = await apiClient.getContextDocuments(contextId, featureArray);
+    const response = await apiClient.getContextDocuments(contextId, featureArray, { limit, offset });
 
     if (response.status === 'success') {
       sendResponse({
         success: true,
         documents: response.payload || [],
         count: response.count || 0,
-        totalCount: response.totalCount || 0
+        totalCount: response.totalCount || 0,
+        limit,
+        offset
       });
     } else {
       throw new Error(response.message || 'Failed to fetch Canvas documents');
@@ -2140,15 +2145,20 @@ async function handleGetWorkspaceDocuments(data, sendResponse) {
       );
     }
 
+    const limit = normalizeCanvasFetchLimit(requestData.limit);
+    const offset = normalizeCanvasFetchOffset(requestData.offset);
+
     // Fetch documents for workspace path
-    const response = await apiClient.getWorkspaceDocuments(wsIdOrName, contextSpec, ['data/abstraction/tab']);
+    const response = await apiClient.getWorkspaceDocuments(wsIdOrName, contextSpec, ['data/abstraction/tab'], { limit, offset });
 
     if (response.status === 'success') {
       sendResponse({
         success: true,
         documents: response.payload || [],
         count: response.count || 0,
-        totalCount: response.totalCount || 0
+        totalCount: response.totalCount || 0,
+        limit,
+        offset
       });
     } else {
       throw new Error(response.message || 'Failed to fetch workspace documents');
@@ -2157,6 +2167,18 @@ async function handleGetWorkspaceDocuments(data, sendResponse) {
     console.error('Failed to get workspace documents:', error);
     sendResponse({ success: false, documents: [], error: error.message });
   }
+}
+
+function normalizeCanvasFetchLimit(value) {
+  const limit = Number(value);
+  if (!Number.isFinite(limit)) return 200;
+  return Math.min(1000, Math.max(1, Math.floor(limit)));
+}
+
+function normalizeCanvasFetchOffset(value) {
+  const offset = Number(value);
+  if (!Number.isFinite(offset)) return 0;
+  return Math.max(0, Math.floor(offset));
 }
 
 async function handleSyncTab(data, sendResponse) {

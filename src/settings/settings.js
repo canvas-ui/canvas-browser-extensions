@@ -17,7 +17,7 @@ let contextSettings, contextSelect, bindContextBtn;
 let currentContext, boundContextId, boundContextUrl;
 let openTabsAddedToCanvas, closeTabsRemovedFromCanvas, sendNewTabsToCanvas, removeClosedTabsFromCanvas;
 let removeUtmParameters;
-let contextUnloadBehavior, stashOptions, stashDiscardTabs, firefoxHideStashedTabs, chromiumStashGroupName;
+let contextUnloadBehavior, stashOptions, stashDiscardTabs, firefoxHideStashedTabs, chromiumStashGroupName, canvasTabsFetchLimit;
 let syncOnlyCurrentBrowser, syncOnlyTaggedTabs, syncTagFilter;
 let saveSettingsBtn, saveAndCloseBtn, resetSettingsBtn;
 let refreshTabSyncDebugBtn, copyTabSyncDebugBtn, tabSyncDebugSummary, tabSyncDebugOutput;
@@ -119,6 +119,7 @@ function initializeElements() {
   stashDiscardTabs = document.getElementById('stashDiscardTabs');
   firefoxHideStashedTabs = document.getElementById('firefoxHideStashedTabs');
   chromiumStashGroupName = document.getElementById('chromiumStashGroupName');
+  canvasTabsFetchLimit = document.getElementById('canvasTabsFetchLimit');
 
   // Sync filtering options
   syncOnlyCurrentBrowser = document.getElementById('syncOnlyCurrentBrowser');
@@ -247,6 +248,7 @@ async function loadSettings() {
         stashDiscardTabs: savedSyncSettings.stashDiscardTabs ?? true,
         firefoxHideStashedTabs: savedSyncSettings.firefoxHideStashedTabs ?? true,
         chromiumStashGroupName: savedSyncSettings.chromiumStashGroupName || 'Closed tabs',
+        canvasTabsFetchLimit: savedSyncSettings.canvasTabsFetchLimit || 200,
         syncOnlyCurrentBrowser: savedSyncSettings.syncOnlyCurrentBrowser || false,
         syncOnlyTaggedTabs: savedSyncSettings.syncOnlyTaggedTabs || false,
         syncTagFilter: savedSyncSettings.syncTagFilter || ''
@@ -297,7 +299,8 @@ async function loadSettings() {
         contextUnloadBehavior: 'close',
         stashDiscardTabs: true,
         firefoxHideStashedTabs: true,
-        chromiumStashGroupName: 'Closed tabs'
+        chromiumStashGroupName: 'Closed tabs',
+        canvasTabsFetchLimit: 200
       },
       browserIdentity: getDefaultBrowserIdentity(),
       currentContext: null
@@ -333,6 +336,7 @@ function populateForm() {
   stashDiscardTabs.checked = settings.syncSettings.stashDiscardTabs ?? true;
   firefoxHideStashedTabs.checked = settings.syncSettings.firefoxHideStashedTabs ?? true;
   chromiumStashGroupName.value = settings.syncSettings.chromiumStashGroupName || 'Closed tabs';
+  canvasTabsFetchLimit.value = String(normalizeCanvasTabsFetchLimit(settings.syncSettings.canvasTabsFetchLimit));
   updateUnloadOptionsVisibility();
 
   // Sync filtering options
@@ -819,6 +823,12 @@ function updateUnloadOptionsVisibility() {
   stashOptions.style.display = contextUnloadBehavior.value === 'stash' ? 'block' : 'none';
 }
 
+function normalizeCanvasTabsFetchLimit(value) {
+  const limit = Number(value);
+  if (!Number.isFinite(limit)) return 200;
+  return Math.min(1000, Math.max(1, Math.floor(limit)));
+}
+
 async function handleModeChange() {
   const selectedMode = syncModeSelect.value;
   currentMode = selectedMode;
@@ -972,6 +982,7 @@ async function handleSaveSettings() {
         stashDiscardTabs: stashDiscardTabs.checked,
         firefoxHideStashedTabs: firefoxHideStashedTabs.checked,
         chromiumStashGroupName: chromiumStashGroupName.value.trim() || 'Closed tabs',
+        canvasTabsFetchLimit: normalizeCanvasTabsFetchLimit(canvasTabsFetchLimit.value),
         syncOnlyCurrentBrowser: syncOnlyCurrentBrowser.checked,
         syncOnlyTaggedTabs: syncOnlyTaggedTabs.checked,
         syncTagFilter: syncTagFilter.value.trim()
