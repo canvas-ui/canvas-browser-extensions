@@ -44,8 +44,8 @@ Download the latest release for your browser:
 
 | Browser | Download |
 |---------|----------|
-| **Chromium-based** (Chrome, Edge, Brave, Opera) | [📦 canvas-extension-chromium.zip](https://github.com/canvas-ai/canvas-browser-extensions/releases/latest) |
-| **Firefox** | [📦 canvas-extension-firefox.zip](https://github.com/canvas-ai/canvas-browser-extensions/releases/latest) |
+| **Chromium-based** (Chrome, Edge, Brave, Opera) | [📦 canvas-extension-chromium.zip](https://github.com/canvas-ui/canvas-browser-extensions/releases/latest) |
+| **Firefox** | [📦 canvas-extension-firefox.zip](https://github.com/canvas-ui/canvas-browser-extensions/releases/latest) |
 
 **Installation steps:**
 
