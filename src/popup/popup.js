@@ -6,10 +6,19 @@ import FuzzySearch from './fuse.js';
 
 // SVG icon paths for action buttons
 const ICON = {
-  sync: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',
-  syncTo: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><polyline points="9 14 12 11 15 14"/><line x1="12" y1="11" x2="12" y2="17"/>',
-  syncClose: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
-  close: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>'
+  // cloud-upload: send tab up to Canvas (the bound context / current path)
+  sync: '<path d="M12 13v8"/><polyline points="8 17 12 13 16 17"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>',
+  // cloud-download: pull tab from Canvas down into the browser
+  open: '<path d="M12 13v8"/><polyline points="8 17 12 21 16 17"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>',
+  // folder with an arrow dropping in: file tab into a folder you choose
+  syncTo: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="10" x2="12" y2="15"/><polyline points="9 13 12 16 15 13"/>',
+  // send out and close: tab leaves the browser
+  syncClose: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>',
+  close: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  // minus-circle: remove from this context (kept in the database)
+  remove: '<circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/>',
+  // trash: delete from the database permanently
+  trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>'
 };
 
 function createSvgIcon(pathsStr, size = 14) {
@@ -1221,7 +1230,7 @@ function renderBrowserTabs() {
 
       // Sync button
       const syncButton = createSecureElement('button', {
-        className: 'action-btn icon-btn small primary',
+        className: 'action-btn icon-btn small secondary',
         'data-action': 'sync',
         'data-tab-id': tab.id,
         title: isSynced ? 'Already synced to Canvas' : 'Sync to Canvas (Ctrl+click: sync & close)'
@@ -1340,29 +1349,32 @@ function renderCanvasTabs() {
     // Create tab actions
     const tabActions = createSecureElement('div', { className: 'tab-actions' });
 
-    // Open button
+    // Open button - pull document from Canvas into the browser
     const openButton = createSecureElement('button', {
-      className: 'action-btn small primary',
+      className: 'action-btn icon-btn small primary',
       'data-action': 'open',
       'data-document-id': tab.id,
       title: 'Open in browser'
-    }, '↙');
+    });
+    openButton.appendChild(createSvgIcon(ICON.open, 12));
 
-    // Remove button
+    // Remove button - take out of this context, keep in database
     const removeButton = createSecureElement('button', {
-      className: 'action-btn small warning',
+      className: 'action-btn icon-btn small warning',
       'data-action': 'remove',
       'data-document-id': tab.id,
       title: 'Remove from context'
-    }, '⊖');
+    });
+    removeButton.appendChild(createSvgIcon(ICON.remove, 12));
 
-    // Delete button
+    // Delete button - permanently delete from database
     const deleteButton = createSecureElement('button', {
-      className: 'action-btn small danger',
+      className: 'action-btn icon-btn small danger',
       'data-action': 'delete',
       'data-document-id': tab.id,
       title: 'Delete from database'
-    }, '🗑');
+    });
+    deleteButton.appendChild(createSvgIcon(ICON.trash, 12));
 
     tabActions.appendChild(openButton);
     tabActions.appendChild(removeButton);
@@ -1973,7 +1985,15 @@ function renderTreeNode(node, parentPath, level) {
   return html;
 }
 
+let treeListenersAttached = false;
 function setupTreeEventListeners() {
+  // Guard against attaching duplicate listeners: treeContainer is a persistent
+  // element, so re-running this on every render would stack handlers. With an
+  // even number of handlers the expand/collapse toggles cancel out, making
+  // subtrees appear un-openable until the view is reopened (parity flips).
+  if (treeListenersAttached) return;
+  treeListenersAttached = true;
+
   // Add click listeners to tree nodes
   treeContainer.addEventListener('click', (event) => {
     const treeNode = event.target.closest('.tree-node');
@@ -3865,7 +3885,13 @@ function renderSyncToTreeNode(node, parentPath, level) {
   return html;
 }
 
+let syncToTreeListenersAttached = false;
 function setupSyncToTreeListeners() {
+  // See setupTreeEventListeners: syncToTree persists across renders, so only
+  // attach the click handler once to avoid stacking toggles.
+  if (syncToTreeListenersAttached) return;
+  syncToTreeListenersAttached = true;
+
   syncToTree.addEventListener('click', (event) => {
     const expandBtn = event.target.closest('.expand-btn');
     if (expandBtn && expandBtn.querySelector('svg')) {
