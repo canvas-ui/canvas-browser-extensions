@@ -9,7 +9,8 @@
     "storage",
     "contextMenus",
     "notifications",
-    "tabHide"
+    "tabHide",
+    "alarms"
   ],
 
   "host_permissions": [

@@ -107,6 +107,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initializeElements();
   setupEventListeners();
   await loadInitialData();
+  startSessionInfoPolling();
 });
 
 function isPopupView() {
@@ -184,6 +185,14 @@ runtime.onMessage.addListener((message) => {
       currentConnection.connected = false;
       updateConnectionStatus(currentConnection);
       showSessionExpiredBanner();
+      break;
+
+    case 'auth.session.renewed':
+      console.log('Session token renewed automatically');
+      currentConnection.connected = true;
+      removeSessionExpiredBanner();
+      updateConnectionStatus(currentConnection);
+      refreshSessionInfo();
       break;
 
     default:
@@ -3616,7 +3625,12 @@ function showToast(message, type = 'info') {
   }, 5000);
 }
 
-function showSessionExpiredBanner() {
+function removeSessionExpiredBanner() {
+  const existing = document.getElementById('session-expired-banner');
+  if (existing) existing.remove();
+}
+
+function showSessionExpiredBanner(text = 'Session expired — tabs are no longer being synced.') {
   const existing = document.getElementById('session-expired-banner');
   if (existing) return;
 
@@ -3625,7 +3639,7 @@ function showSessionExpiredBanner() {
   banner.style.cssText = 'background:#7f1d1d;color:#fecaca;padding:8px 12px;font-size:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;';
 
   const msg = document.createElement('span');
-  msg.textContent = 'Session expired.';
+  msg.textContent = text;
   banner.appendChild(msg);
 
   const btn = document.createElement('button');
@@ -3636,6 +3650,77 @@ function showSessionExpiredBanner() {
 
   const container = document.getElementById('viewContainer');
   if (container) container.prepend(banner);
+}
+
+// ---- Session expiry awareness ----------------------------------------------
+// JWT sessions are auto-renewed by the service worker; this only surfaces state
+// to the user. If a renewal can't happen (offline near expiry), warn proactively.
+let sessionInfoTimer = null;
+
+function formatDuration(ms) {
+  const totalMin = Math.round(ms / 60000);
+  if (totalMin < 60) return `${totalMin} min`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return m ? `${h}h ${m}m` : `${h}h`;
+}
+
+function showSessionWarningBanner(text) {
+  // Reuse the expired banner slot but with a softer (amber) treatment.
+  let banner = document.getElementById('session-expired-banner');
+  if (banner && banner.dataset.kind !== 'warning') return; // don't override a hard-expired banner
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'session-expired-banner';
+    banner.dataset.kind = 'warning';
+    banner.style.cssText = 'background:#78350f;color:#fde68a;padding:8px 12px;font-size:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;';
+    const msg = document.createElement('span');
+    msg.className = 'session-warning-msg';
+    banner.appendChild(msg);
+    const btn = document.createElement('button');
+    btn.textContent = 'Reconnect';
+    btn.style.cssText = 'background:#d97706;color:#fff;border:none;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;white-space:nowrap;';
+    btn.addEventListener('click', openSettingsPage);
+    banner.appendChild(btn);
+    const container = document.getElementById('viewContainer');
+    if (container) container.prepend(banner);
+  }
+  const msgEl = banner.querySelector('.session-warning-msg');
+  if (msgEl) msgEl.textContent = text;
+}
+
+async function refreshSessionInfo() {
+  try {
+    const info = await sendMessageToBackground('GET_SESSION_INFO');
+    if (!info?.success || !info.connected) return;
+
+    // Non-expiring API token, or auto-renew handles JWTs comfortably: nothing to show.
+    if (info.tokenType !== 'jwt' || info.expiresInMs == null) return;
+
+    // Only warn if expiry is imminent AND auto-renew hasn't kicked in yet
+    // (e.g. the browser was offline). Otherwise stay quiet.
+    const WARN_THRESHOLD_MS = 6 * 60 * 1000;
+    const existingHardBanner = document.getElementById('session-expired-banner')?.dataset.kind !== 'warning'
+      && document.getElementById('session-expired-banner');
+    if (info.expiresInMs <= 0) {
+      if (!existingHardBanner) showSessionExpiredBanner();
+    } else if (info.expiresInMs <= WARN_THRESHOLD_MS) {
+      showSessionWarningBanner(`Session expires in ${formatDuration(info.expiresInMs)}. Renewing…`);
+    } else {
+      // Plenty of time left — clear any stale warning banner.
+      const banner = document.getElementById('session-expired-banner');
+      if (banner && banner.dataset.kind === 'warning') banner.remove();
+    }
+  } catch (error) {
+    console.warn('Failed to refresh session info:', error);
+  }
+}
+
+function startSessionInfoPolling() {
+  if (sessionInfoTimer) clearInterval(sessionInfoTimer);
+  refreshSessionInfo();
+  // Light cadence; the SW does the actual renewal, this is purely informational.
+  sessionInfoTimer = setInterval(refreshSessionInfo, 60 * 1000);
 }
 
 // ===================================

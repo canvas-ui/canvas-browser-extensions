@@ -13,6 +13,35 @@ export class AuthExpiredError extends Error {
 
 const DEFAULT_WORKSPACE_TREE_NAME = 'context';
 
+/**
+ * Decode a JWT payload without verifying the signature.
+ * Returns the parsed payload object, or null if the value is not a JWT
+ * (e.g. opaque `canvas-` API/device tokens, which never expire).
+ */
+export function decodeJwtPayload(token) {
+  if (typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  try {
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+    const json = atob(padded);
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Return the expiry of a JWT as a millisecond epoch timestamp,
+ * or null if the token is not a JWT or carries no `exp` claim.
+ */
+export function getJwtExpiryMs(token) {
+  const payload = decodeJwtPayload(token);
+  if (!payload || typeof payload.exp !== 'number') return null;
+  return payload.exp * 1000;
+}
+
 export class CanvasApiClient {
   constructor() {
     this.baseUrl = null;
@@ -662,6 +691,26 @@ Firefox blocks local network requests for security reasons.
       if (error.name === 'AbortError') throw new Error('Login request timed out');
       throw error;
     }
+  }
+
+  /**
+   * Exchange the current (still-valid) JWT for a fresh one.
+   * Only meaningful for credentials/JWT sessions; opaque API tokens never expire.
+   * Throws AuthExpiredError if the current token is already expired/invalid.
+   * Returns { token, expiresIn } on success.
+   */
+  async refreshUserToken() {
+    const data = await this.post('/auth/token/refresh', {});
+    const body = this.parseResponsePayload(data);
+    const token = body?.token;
+    if (!token) throw new Error('Token refresh did not return a new token');
+    this.userToken = token;
+    return { token, expiresIn: body?.expiresIn || null, user: body?.user || null };
+  }
+
+  // Expiry of the current user token (ms epoch), or null for non-JWT/non-expiring tokens.
+  getUserTokenExpiryMs() {
+    return getJwtExpiryMs(this.userToken);
   }
 
   // Context methods

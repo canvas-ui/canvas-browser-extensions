@@ -2,7 +2,7 @@
 // Handles background operations, API communication, and tab synchronization
 
 import { browserStorage } from './modules/browser-storage.js';
-import { apiClient, AuthExpiredError } from './modules/api-client.js';
+import { apiClient, AuthExpiredError, getJwtExpiryMs } from './modules/api-client.js';
 import { webSocketClient } from './modules/websocket-client.js';
 import { tabManager } from './modules/tab-manager.js';
 import { syncEngine } from './modules/sync-engine.js';
@@ -15,7 +15,125 @@ console.log('🚀 Service Worker: Registering tab event listeners...');
 const runtimeAPI = (typeof browser !== 'undefined' && browser.runtime) ? browser.runtime : chrome.runtime;
 const tabsAPI = (typeof browser !== 'undefined' && browser.tabs) ? browser.tabs : chrome.tabs;
 const windowsAPI = (typeof browser !== 'undefined' && browser.windows) ? browser.windows : chrome.windows;
+// Toolbar action (MV3 `action`, with fallback to MV2 `browserAction`) for the session badge.
+const actionAPI = (() => {
+  if (typeof browser !== 'undefined') return browser.action || browser.browserAction || null;
+  return (chrome.action || chrome.browserAction || null);
+})();
+const alarmsAPI = (typeof browser !== 'undefined' && browser.alarms) ? browser.alarms : (chrome.alarms || null);
 let webSocketHandlersInitialized = false;
+
+// ---- Session token lifecycle -------------------------------------------------
+// The credentials-login JWT expires (default 24h). We proactively renew it a few
+// minutes before expiry so a session never silently dies mid-use. Opaque `canvas-`
+// API/device tokens are not JWTs and never expire, so renewal is skipped for them.
+const TOKEN_RENEW_ALARM = 'canvas-token-renew';
+const RENEW_LEAD_MS = 5 * 60 * 1000;   // renew this long before expiry
+const RENEW_RETRY_MS = 60 * 1000;      // retry cadence on transient renewal failure
+
+// Visually flag the toolbar icon when the session needs attention.
+async function setSessionBadge(state) {
+  if (!actionAPI) return;
+  try {
+    if (state === 'expired') {
+      await actionAPI.setBadgeText({ text: '!' });
+      if (actionAPI.setBadgeBackgroundColor) await actionAPI.setBadgeBackgroundColor({ color: '#dc2626' });
+      if (actionAPI.setTitle) await actionAPI.setTitle({ title: 'Canvas: session expired — click to reconnect' });
+    } else {
+      await actionAPI.setBadgeText({ text: '' });
+      if (actionAPI.setTitle) await actionAPI.setTitle({ title: 'Canvas Browser Extension' });
+    }
+  } catch (e) {
+    console.warn('Failed to update session badge:', e?.message || e);
+  }
+}
+
+// Schedule the next proactive renewal based on the current token's expiry.
+// Clears any pending alarm when there is nothing to renew (no token / opaque token).
+async function scheduleTokenRenewal() {
+  if (!alarmsAPI) return;
+  try {
+    await alarmsAPI.clear(TOKEN_RENEW_ALARM);
+
+    const settings = await browserStorage.getConnectionSettings();
+    if (!settings?.connected || !settings?.apiToken) return;
+
+    const expiryMs = getJwtExpiryMs(settings.apiToken);
+    if (!expiryMs) {
+      // Opaque/non-expiring token — nothing to renew.
+      return;
+    }
+
+    const fireAt = expiryMs - RENEW_LEAD_MS;
+    // chrome.alarms uses absolute `when` (ms epoch); enforce a small floor so we
+    // fire promptly when the token is already inside the renewal window.
+    const when = Math.max(fireAt, Date.now() + 5 * 1000);
+    alarmsAPI.create(TOKEN_RENEW_ALARM, { when });
+    console.log(`Scheduled token renewal at ${new Date(when).toISOString()} (expires ${new Date(expiryMs).toISOString()})`);
+  } catch (e) {
+    console.warn('Failed to schedule token renewal:', e?.message || e);
+  }
+}
+
+// Attempt to mint a fresh JWT using the current (still-valid) one.
+async function renewSessionToken() {
+  const settings = await browserStorage.getConnectionSettings();
+  if (!settings?.connected || !settings?.apiToken) return;
+
+  const expiryMs = getJwtExpiryMs(settings.apiToken);
+  if (!expiryMs) return; // opaque token, no renewal needed
+
+  // If the alarm fired early (e.g. browser woke the SW), only renew once we're
+  // actually within the lead window; otherwise just reschedule.
+  if (Date.now() < expiryMs - RENEW_LEAD_MS - 1000) {
+    await scheduleTokenRenewal();
+    return;
+  }
+
+  try {
+    await ensureApiClientReady();
+    const { token } = await apiClient.refreshUserToken();
+
+    await browserStorage.setConnectionSettings({ apiToken: token, connected: true });
+    apiClient.userToken = token;
+
+    await setSessionBadge('ok');
+    broadcastToPopup('auth.session.renewed', { expiresAt: getJwtExpiryMs(token) });
+    console.log('Session token renewed successfully');
+
+    // Reconnect the WebSocket with the refreshed credentials when it relies on
+    // the user token (no device token configured).
+    try {
+      const refreshed = await browserStorage.getConnectionSettings();
+      if (!refreshed?.deviceToken) {
+        await webSocketClient.disconnect();
+        await initializeWebSocket();
+      }
+    } catch (e) {
+      console.warn('Failed to refresh WebSocket after token renewal:', e?.message || e);
+    }
+
+    await scheduleTokenRenewal();
+  } catch (error) {
+    if (error instanceof AuthExpiredError) {
+      // Token already expired/invalid — can't renew without re-auth.
+      console.warn('Token renewal rejected (already expired); marking session expired');
+      await handleAuthExpired();
+      return;
+    }
+    // Transient failure (server unreachable, offline) — retry shortly.
+    console.warn('Token renewal failed, will retry:', error?.message || error);
+    if (alarmsAPI) alarmsAPI.create(TOKEN_RENEW_ALARM, { when: Date.now() + RENEW_RETRY_MS });
+  }
+}
+
+if (alarmsAPI) {
+  alarmsAPI.onAlarm.addListener((alarm) => {
+    if (alarm?.name === TOKEN_RENEW_ALARM) {
+      void renewSessionToken();
+    }
+  });
+}
 
 // Service worker installation and activation
 runtimeAPI.onInstalled.addListener(async (details) => {
@@ -87,6 +205,7 @@ async function initializeExtension() {
         if (!testResult.success || !testResult.authenticated) {
           console.warn('Saved credentials failed, marking as disconnected');
           await browserStorage.setConnectionSettings({ connected: false });
+          await setSessionBadge('expired');
         } else {
           console.log('Saved credentials are valid');
 
@@ -94,8 +213,13 @@ async function initializeExtension() {
             await browserStorage.setConnectionSettings({ connected: true });
           }
 
+          await setSessionBadge('ok');
+
           // Initialize WebSocket connection (will no-op until a context/workspace is selected)
           await initializeWebSocket();
+
+          // Keep the JWT session alive across its expiry window.
+          await scheduleTokenRenewal();
         }
       }
     }
@@ -333,6 +457,11 @@ async function handleAuthExpired() {
   console.warn('Auth expired — clearing session and notifying UI');
   apiClient.userToken = null;
   await browserStorage.setConnectionSettings({ connected: false, apiToken: '' });
+  if (alarmsAPI) {
+    try { await alarmsAPI.clear(TOKEN_RENEW_ALARM); } catch { /* ignore */ }
+  }
+  // Persistent signal even when the popup is closed.
+  await setSessionBadge('expired');
   broadcastToPopup('auth.session.expired', {});
 }
 
@@ -506,9 +635,19 @@ tabsAPI.onUpdated.addListener(async (tabId, changeInfo, tab) => {
           console.error('❌ AUTO-SYNC: Failed to sync loaded tab:', syncResult.error || 'Unknown error');
         }
       } catch (error) {
+        if (error instanceof AuthExpiredError) {
+          // Session died mid-use: make it visible instead of silently dropping tabs.
+          console.warn('❌ AUTO-SYNC: Session expired while syncing tab — flagging for reconnect');
+          await handleAuthExpired();
+          return;
+        }
         console.error('❌ AUTO-SYNC: Exception syncing loaded tab:', error);
       }
     } catch (error) {
+      if (error instanceof AuthExpiredError) {
+        await handleAuthExpired();
+        return;
+      }
       console.error('❌ AUTO-SYNC: Exception processing loaded tab:', error);
     }
   }
@@ -626,6 +765,11 @@ runtimeAPI.onMessage.addListener((message, sender, sendResponse) => {
   case 'GET_CONNECTION_STATUS':
     // Return current connection status from storage
     run(handleGetConnectionStatus(respond));
+    return true;
+
+  case 'GET_SESSION_INFO':
+    // Return JWT session expiry info for the popup countdown
+    run(handleGetSessionInfo(respond));
     return true;
 
   case 'GET_TAB_SYNC_DEBUG':
@@ -907,6 +1051,26 @@ async function handleGetConnectionStatus(sendResponse) {
   }
 }
 
+async function handleGetSessionInfo(sendResponse) {
+  try {
+    const settings = await browserStorage.getConnectionSettings();
+    const expiresAt = settings?.apiToken ? getJwtExpiryMs(settings.apiToken) : null;
+    // A JWT (has exp) is auto-renewed; opaque API tokens never expire.
+    const isJwt = expiresAt !== null;
+    sendResponse({
+      success: true,
+      connected: !!settings?.connected,
+      expiresAt,                          // ms epoch, or null for non-expiring tokens
+      expiresInMs: expiresAt ? Math.max(0, expiresAt - Date.now()) : null,
+      autoRenew: isJwt && !!settings?.connected,
+      tokenType: isJwt ? 'jwt' : (settings?.apiToken ? 'api' : 'none')
+    });
+  } catch (error) {
+    console.error('Failed to get session info:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
 async function handleGetTabSyncDebug(sendResponse) {
   try {
     await tabManager.initialize();
@@ -1081,6 +1245,10 @@ async function handleConnect(data, sendResponse) {
       await initializeWebSocket();
     }
 
+    // Clear any stale "expired" badge and (re)schedule proactive JWT renewal.
+    await setSessionBadge('ok');
+    await scheduleTokenRenewal();
+
     console.log('Connection saved successfully');
 
     sendResponse({
@@ -1141,6 +1309,12 @@ async function handleDisconnect(sendResponse) {
 
     // Clear API client
     apiClient.connected = false;
+
+    // Cancel pending renewal and clear the session badge.
+    if (alarmsAPI) {
+      try { await alarmsAPI.clear(TOKEN_RENEW_ALARM); } catch { /* ignore */ }
+    }
+    await setSessionBadge('ok');
 
     console.log('Disconnected successfully');
 

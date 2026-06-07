@@ -10,7 +10,8 @@
     "contextMenus",
     "notifications",
     "sidePanel",
-    "tabGroups"
+    "tabGroups",
+    "alarms"
   ],
 
   "host_permissions": [
