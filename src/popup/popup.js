@@ -4,6 +4,10 @@
 // Import FuzzySearch for fuzzy search
 import FuzzySearch from './fuse.js';
 
+// Register the <iconify-icon> web component. Icon SVGs are lazy-fetched from
+// the Iconify API on first use — mirrors the web UI's @iconify/react <Icon/>.
+import 'iconify-icon';
+
 // SVG icon paths for action buttons
 const ICON = {
   // cloud-upload: send tab up to Canvas (the bound context / current path)
@@ -1918,6 +1922,28 @@ function renderTreeView() {
   setupTreeEventListeners();
 }
 
+// Per-layer visuals are stored in metadata.ui = { icon, color } (icon is an
+// Iconify name, e.g. "ph:monitor-fill"). Mirrors web UI src/lib/layer-style.ts.
+const DEFAULT_FOLDER_ICON = 'ph:folder-fill';
+const DEFAULT_CANVAS_ICON = 'ph:squares-four-fill';
+
+function getLayerStyle(node) {
+  const ui = (node && node.metadata && node.metadata.ui) ? node.metadata.ui : {};
+  return {
+    icon: typeof ui.icon === 'string' ? ui.icon : undefined,
+    color: typeof ui.color === 'string' ? ui.color : (node && node.color ? node.color : undefined)
+  };
+}
+
+// Build the <iconify-icon> HTML for a tree node, tinted with its layer color.
+function layerIconHtml(node) {
+  const { icon, color } = getLayerStyle(node);
+  const isCanvas = node && node.type === 'canvas';
+  const name = icon || (isCanvas ? DEFAULT_CANVAS_ICON : DEFAULT_FOLDER_ICON);
+  const colorStyle = (color && color !== '#fff') ? ` style="color: ${escapeHtml(color)}"` : '';
+  return `<iconify-icon class="folder-icon" icon="${escapeHtml(name)}"${colorStyle}></iconify-icon>`;
+}
+
 function renderTreeNode(node, parentPath, level) {
   // Build the correct path for this node
   const currentPath = level === 0 ? '/' : (parentPath === '/' ? `/${node.name}` : `${parentPath}/${node.name}`);
@@ -1934,10 +1960,7 @@ function renderTreeNode(node, parentPath, level) {
     html += `
       <div class="tree-node ${isSelected ? 'selected' : ''}" data-path="/" data-level="0" data-node-id="${node.id || 'root'}">
         <div class="expand-btn"></div>
-        <svg class="folder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-        </svg>
-        ${node.color && node.color !== '#fff' ? `<div class="color-indicator" style="background-color: ${node.color}"></div>` : ''}
+        ${layerIconHtml(node)}
         <span class="node-label">/</span>
       </div>
     `;
@@ -1961,10 +1984,7 @@ function renderTreeNode(node, parentPath, level) {
           <button class="expand-btn" ${!childHasChildren ? 'style="visibility: hidden;"' : ''}>
             ${childHasChildren ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>' : ''}
           </button>
-          <svg class="folder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-          </svg>
-          ${child.color && child.color !== '#fff' ? `<div class="color-indicator" style="background-color: ${child.color}"></div>` : ''}
+          ${layerIconHtml(child)}
           <span class="node-label">${child.label || child.name}</span>
         </div>
       `;
@@ -3841,10 +3861,7 @@ function renderSyncToTreeNode(node, parentPath, level) {
       <div class="tree-node ${isChecked ? 'checked' : ''}" data-path="/" style="padding-left: 4px">
         <input type="checkbox" class="tree-checkbox" data-path="/" ${isChecked ? 'checked' : ''}>
         <div class="expand-btn"></div>
-        <svg class="folder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-        </svg>
-        ${node.color && node.color !== '#fff' ? `<div class="color-indicator" style="background-color: ${node.color}"></div>` : ''}
+        ${layerIconHtml(node)}
         <span class="node-label">/</span>
       </div>
     `;
@@ -3864,10 +3881,7 @@ function renderSyncToTreeNode(node, parentPath, level) {
           <button class="expand-btn" ${!childHasChildren ? 'style="visibility: hidden;"' : ''}>
             ${childHasChildren ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>' : ''}
           </button>
-          <svg class="folder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-          </svg>
-          ${child.color && child.color !== '#fff' ? `<div class="color-indicator" style="background-color: ${child.color}"></div>` : ''}
+          ${layerIconHtml(child)}
           <span class="node-label">${child.label || child.name}</span>
         </div>
       `;

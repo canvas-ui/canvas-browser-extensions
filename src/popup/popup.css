@@ -968,6 +968,7 @@ body[data-host="panel"] {
   height: 16px;
   margin-right: 8px;
   color: #007bff;
+  flex-shrink: 0;
 }
 
 .tree-node .node-label {
@@ -1265,6 +1266,7 @@ body[data-host="panel"] {
   height: 16px;
   margin-right: 8px;
   color: #007bff;
+  flex-shrink: 0;
 }
 
 .sync-to-tree .node-label {
