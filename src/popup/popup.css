@@ -150,6 +150,14 @@ body[data-host="panel"] {
   font-weight: 500;
 }
 
+.context-id .workspace-icon {
+  width: 14px;
+  height: 14px;
+  margin-right: 4px;
+  vertical-align: -2px;
+  flex-shrink: 0;
+}
+
 .context-url-container {
   display: flex;
   flex-direction: column;

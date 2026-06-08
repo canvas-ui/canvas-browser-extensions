@@ -616,7 +616,8 @@ function updateConnectionStatus(connection) {
         style: 'margin-right: 6px;'
       });
       contextId.appendChild(unboundIndicator);
-      contextId.appendChild(document.createTextNode(`Workspace: ${escapeHtml(wsName)}`));
+      contextId.appendChild(workspaceIconEl(connection.workspace));
+      contextId.appendChild(document.createTextNode(`Workspace: ${wsName}`));
 
       // Format URL as workspace.name://path
       const workspacePath = currentWorkspacePath || '/';
@@ -1926,6 +1927,18 @@ function renderTreeView() {
 // Iconify name, e.g. "ph:monitor-fill"). Mirrors web UI src/lib/layer-style.ts.
 const DEFAULT_FOLDER_ICON = 'ph:folder-fill';
 const DEFAULT_CANVAS_ICON = 'ph:squares-four-fill';
+const DEFAULT_WORKSPACE_ICON = 'ph:stack-fill';
+
+// Build an <iconify-icon> DOM element for a workspace, tinted with its layer
+// color. Mirrors web's getLayerStyle()/DEFAULT_WORKSPACE_ICON.
+function workspaceIconEl(workspace) {
+  const { icon, color } = getLayerStyle(workspace);
+  const el = document.createElement('iconify-icon');
+  el.className = 'workspace-icon';
+  el.setAttribute('icon', icon || DEFAULT_WORKSPACE_ICON);
+  if (color && color !== '#fff') el.setAttribute('style', `color: ${color}`);
+  return el;
+}
 
 function getLayerStyle(node) {
   const ui = (node && node.metadata && node.metadata.ui) ? node.metadata.ui : {};
@@ -2438,7 +2451,9 @@ function renderWorkspacesList(workspaces) {
         <button class="selection-action-btn open-workspace-btn"
                 data-workspace-id="${workspace.id}"
                 data-workspace-name="${escapeHtml(workspace.name || workspace.label)}"
-                data-workspace-label="${escapeHtml(workspace.label || workspace.name)}">
+                data-workspace-label="${escapeHtml(workspace.label || workspace.name)}"
+                data-workspace-icon="${escapeHtml(getLayerStyle(workspace).icon || '')}"
+                data-workspace-color="${escapeHtml(getLayerStyle(workspace).color || '')}">
           Open Workspace
         </button>
       </div>
@@ -2518,7 +2533,7 @@ async function bindToContext(contextId, contextName, contextUrl) {
   }
 }
 
-async function openWorkspace(workspaceId, workspaceName, workspaceLabel) {
+async function openWorkspace(workspaceId, workspaceName, workspaceLabel, workspaceIcon, workspaceColor) {
   try {
     console.log('Opening workspace:', workspaceId, 'name:', workspaceName);
 
@@ -2527,6 +2542,12 @@ async function openWorkspace(workspaceId, workspaceName, workspaceLabel) {
       name: workspaceName, // Now correctly using the actual workspace name
       label: workspaceLabel || workspaceName
     };
+    // Carry icon/color so the explorer header can show the workspace icon.
+    if (workspaceIcon || workspaceColor) {
+      workspaceData.metadata = { ui: {} };
+      if (workspaceIcon) workspaceData.metadata.ui.icon = workspaceIcon;
+      if (workspaceColor) workspaceData.metadata.ui.color = workspaceColor;
+    }
 
     const response = await sendMessageToBackground('OPEN_WORKSPACE', { workspace: workspaceData });
 
@@ -2567,7 +2588,9 @@ function handleSelectionActionClick(event) {
     const workspaceId = button.dataset.workspaceId;
     const workspaceName = button.dataset.workspaceName;
     const workspaceLabel = button.dataset.workspaceLabel;
-    openWorkspace(workspaceId, workspaceName, workspaceLabel);
+    const workspaceIcon = button.dataset.workspaceIcon;
+    const workspaceColor = button.dataset.workspaceColor;
+    openWorkspace(workspaceId, workspaceName, workspaceLabel, workspaceIcon, workspaceColor);
   }
 }
 
