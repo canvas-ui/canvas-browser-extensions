@@ -1939,9 +1939,12 @@ function workspaceIconHtml(workspace) {
 
 function getLayerStyle(node) {
   const ui = (node && node.metadata && node.metadata.ui) ? node.metadata.ui : {};
+  // Icon/color may live in metadata.ui (tree layers) or top-level (workspaces).
+  const topIcon = node && typeof node.icon === 'string' ? node.icon : undefined;
+  const topColor = node && typeof node.color === 'string' ? node.color : undefined;
   return {
-    icon: typeof ui.icon === 'string' ? ui.icon : undefined,
-    color: typeof ui.color === 'string' ? ui.color : (node && node.color ? node.color : undefined)
+    icon: typeof ui.icon === 'string' ? ui.icon : topIcon,
+    color: typeof ui.color === 'string' ? ui.color : topColor
   };
 }
 
