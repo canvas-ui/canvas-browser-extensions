@@ -616,8 +616,7 @@ function updateConnectionStatus(connection) {
         style: 'margin-right: 6px;'
       });
       contextId.appendChild(unboundIndicator);
-      contextId.appendChild(workspaceIconEl(connection.workspace));
-      contextId.appendChild(document.createTextNode(`Workspace: ${wsName}`));
+      contextId.appendChild(document.createTextNode(`Workspace: ${escapeHtml(wsName)}`));
 
       // Format URL as workspace.name://path
       const workspacePath = currentWorkspacePath || '/';
@@ -1929,15 +1928,13 @@ const DEFAULT_FOLDER_ICON = 'ph:folder-fill';
 const DEFAULT_CANVAS_ICON = 'ph:squares-four-fill';
 const DEFAULT_WORKSPACE_ICON = 'ph:stack-fill';
 
-// Build an <iconify-icon> DOM element for a workspace, tinted with its layer
-// color. Mirrors web's getLayerStyle()/DEFAULT_WORKSPACE_ICON.
-function workspaceIconEl(workspace) {
+// Build the <iconify-icon> HTML for a workspace, tinted with its layer color.
+// Mirrors web's getLayerStyle()/DEFAULT_WORKSPACE_ICON.
+function workspaceIconHtml(workspace) {
   const { icon, color } = getLayerStyle(workspace);
-  const el = document.createElement('iconify-icon');
-  el.className = 'workspace-icon';
-  el.setAttribute('icon', icon || DEFAULT_WORKSPACE_ICON);
-  if (color && color !== '#fff') el.setAttribute('style', `color: ${color}`);
-  return el;
+  const name = icon || DEFAULT_WORKSPACE_ICON;
+  const colorStyle = (color && color !== '#fff') ? ` style="color: ${escapeHtml(color)}"` : '';
+  return `<iconify-icon class="workspace-icon" icon="${escapeHtml(name)}"${colorStyle}></iconify-icon>`;
 }
 
 function getLayerStyle(node) {
@@ -2442,6 +2439,7 @@ function renderWorkspacesList(workspaces) {
 
   const workspacesHtml = activeWorkspaces.map(workspace => `
     <div class="selection-item" data-workspace-id="${workspace.id}">
+      ${workspaceIconHtml(workspace)}
       <div class="selection-item-info">
         <div class="selection-item-name">${workspace.label || workspace.name || workspace.id}</div>
         <div class="selection-item-id">${workspace.id}</div>
