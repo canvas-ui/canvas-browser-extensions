@@ -2138,6 +2138,27 @@ function showNewFolderInput(menu, parentPath, source) {
   input.focus();
 }
 
+// Expand every ancestor folder of a path in a freshly rendered tree so a newly
+// created node becomes visible (renders default to collapsed children).
+function expandTreeAncestors(container, leafPath) {
+  if (!container) return;
+  const paths = ['/'];
+  let acc = '';
+  for (const part of leafPath.split('/').filter(Boolean)) {
+    acc = `${acc}/${part}`;
+    paths.push(acc);
+  }
+  for (const path of paths) {
+    const node = container.querySelector(`.tree-node[data-path="${CSS.escape(path)}"]`);
+    const children = node && node.nextElementSibling;
+    if (children && children.classList.contains('tree-children')) {
+      children.style.display = 'block';
+      const svg = node.querySelector('.expand-btn svg');
+      if (svg) svg.style.transform = 'rotate(90deg)';
+    }
+  }
+}
+
 async function refreshTreeData() {
   if (currentConnection.mode === 'context' && currentConnection.context) {
     const r = await sendMessageToBackground('GET_CONTEXT_TREE', { contextId: currentConnection.context.id });
@@ -2168,10 +2189,13 @@ async function createFolderUnder(parentPath, name, source) {
 
     showToast(`Created ${childPath}`, 'success');
     // Re-fetch the shared tree and re-render whichever view is active. Sync To
-    // keeps its selection (renderSyncToTree reads syncToSelectedPaths).
+    // keeps its selection (renderSyncToTree reads syncToSelectedPaths). Re-render
+    // rebuilds the tree collapsed, so expand the ancestors to reveal the new node.
     await refreshTreeData();
+    const container = source === 'syncTo' ? syncToTree : treeContainer;
     if (source === 'syncTo') renderSyncToTree();
     else renderTreeView();
+    expandTreeAncestors(container, childPath);
   } catch (error) {
     console.error('Create folder failed:', error);
     showToast('Create folder failed: ' + error.message, 'error');
