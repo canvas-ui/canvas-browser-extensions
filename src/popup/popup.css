@@ -315,6 +315,48 @@ body[data-host="panel"] {
   flex: 1;
 }
 
+/* Tree "New Folder" context menu */
+.tree-context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 140px;
+  padding: 4px;
+  background: #fff;
+  border: 1px solid #e1e5e9;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.tree-context-item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  background: none;
+  text-align: left;
+  font-size: 13px;
+  color: #333;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.tree-context-item:hover {
+  background: #f1f6ff;
+}
+
+.tree-context-input {
+  width: 160px;
+  padding: 6px 8px;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  font-size: 13px;
+  outline: none;
+}
+
+.tree-context-input:focus {
+  border-color: #0066cc;
+}
+
 /* Pinned selected paths — chips above the tree for at-a-glance feedback */
 .sync-to-pinned {
   display: flex;

@@ -65,6 +65,9 @@ let contextsList, workspacesList;
 // Sync To panel elements
 let syncToOverlay, syncToTree, syncToPanelClose, syncToCount, syncToSearchInput, syncToSearchClear, syncToPinned;
 
+// Floating "New Folder" context menu element (shared by both trees)
+let treeCtxMenuEl = null;
+
 // State
 let currentConnection = { connected: false, context: null, mode: 'explorer', workspace: null };
 let currentWorkspacePath = '/';
@@ -434,6 +437,9 @@ function setupEventListeners() {
     e.preventDefault();
     if (syncToOverlay.classList.contains('open')) closeSyncToPanel();
   });
+
+  // Right-click any tree node (main tree or Sync To tree) → New Folder
+  setupTreeContextMenus();
   openSelectedBtn.addEventListener('click', () => handleOpenSelected());
   removeSelectedBtn.addEventListener('click', () => handleRemoveSelected());
   deleteSelectedBtn.addEventListener('click', () => handleDeleteSelected());
@@ -2071,6 +2077,105 @@ function setupTreeEventListeners() {
       }
     }
   });
+}
+
+// ── Tree "New Folder" context menu ──────────────────────────────────────────
+// Popup floating menus must be clamped to the popup bounds; a single shared
+// menu is positioned at the cursor and removed on any outside click.
+function setupTreeContextMenus() {
+  const onContext = (source) => (event) => {
+    const node = event.target.closest('.tree-node');
+    if (!node) return;
+    event.preventDefault();
+    showTreeContextMenu(event.clientX, event.clientY, node.dataset.path, source);
+  };
+  treeContainer.addEventListener('contextmenu', onContext('main'));
+  syncToTree.addEventListener('contextmenu', onContext('syncTo'));
+  document.addEventListener('click', hideTreeContextMenu);
+  document.addEventListener('scroll', hideTreeContextMenu, true);
+}
+
+function hideTreeContextMenu() {
+  if (treeCtxMenuEl) { treeCtxMenuEl.remove(); treeCtxMenuEl = null; }
+}
+
+function showTreeContextMenu(x, y, parentPath, source) {
+  hideTreeContextMenu();
+  const menu = createSecureElement('div', { className: 'tree-context-menu' });
+  // Stop clicks inside the menu from bubbling to the document-level dismiss.
+  menu.addEventListener('click', (e) => e.stopPropagation());
+
+  const item = createSecureElement('button', { className: 'tree-context-item' }, 'New Folder');
+  item.addEventListener('click', () => showNewFolderInput(menu, parentPath, source));
+  menu.appendChild(item);
+
+  document.body.appendChild(menu);
+  // Clamp inside the popup viewport.
+  const rect = menu.getBoundingClientRect();
+  const px = Math.min(x, window.innerWidth - rect.width - 8);
+  const py = Math.min(y, window.innerHeight - rect.height - 8);
+  menu.style.left = `${Math.max(4, px)}px`;
+  menu.style.top = `${Math.max(4, py)}px`;
+  treeCtxMenuEl = menu;
+}
+
+// Inline name entry — a prompt() can steal focus and dismiss the popup, so the
+// folder name is captured with an input inside the same floating menu box.
+function showNewFolderInput(menu, parentPath, source) {
+  menu.textContent = '';
+  const input = createSecureElement('input', { className: 'tree-context-input', type: 'text', placeholder: 'Folder name…' });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const name = input.value.trim();
+      hideTreeContextMenu();
+      if (name) createFolderUnder(parentPath, name, source);
+    } else if (e.key === 'Escape') {
+      hideTreeContextMenu();
+    }
+  });
+  menu.appendChild(input);
+  input.focus();
+}
+
+async function refreshTreeData() {
+  if (currentConnection.mode === 'context' && currentConnection.context) {
+    const r = await sendMessageToBackground('GET_CONTEXT_TREE', { contextId: currentConnection.context.id });
+    if (r.success) treeData = r.tree;
+  } else if (currentConnection.mode === 'explorer' && currentConnection.workspace) {
+    const wsId = currentConnection.workspace.name || currentConnection.workspace.id;
+    const r = await sendMessageToBackground('GET_WORKSPACE_TREE', { workspaceIdOrName: wsId });
+    if (r.success) treeData = r.tree;
+  }
+}
+
+async function createFolderUnder(parentPath, name, source) {
+  if (name.includes('/')) { showToast('Folder name cannot contain "/"', 'error'); return; }
+  const childPath = parentPath === '/' ? `/${name}` : `${parentPath}/${name}`;
+
+  try {
+    let response;
+    if (currentConnection.mode === 'context' && currentConnection.context) {
+      response = await sendMessageToBackground('INSERT_CONTEXT_PATH', { contextId: currentConnection.context.id, path: childPath, autoCreateLayers: true });
+    } else if (currentConnection.mode === 'explorer' && currentConnection.workspace) {
+      const wsId = currentConnection.workspace.name || currentConnection.workspace.id;
+      response = await sendMessageToBackground('INSERT_WORKSPACE_PATH', { workspaceIdOrName: wsId, path: childPath, autoCreateLayers: true });
+    } else {
+      showToast('Not connected to a workspace or context', 'error');
+      return;
+    }
+    if (!response.success) throw new Error(response.error || 'Failed to create folder');
+
+    showToast(`Created ${childPath}`, 'success');
+    // Re-fetch the shared tree and re-render whichever view is active. Sync To
+    // keeps its selection (renderSyncToTree reads syncToSelectedPaths).
+    await refreshTreeData();
+    if (source === 'syncTo') renderSyncToTree();
+    else renderTreeView();
+  } catch (error) {
+    console.error('Create folder failed:', error);
+    showToast('Create folder failed: ' + error.message, 'error');
+  }
 }
 
 // Thin wrapper kept for the main tree view; both trees share the same markup so

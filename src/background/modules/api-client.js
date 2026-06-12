@@ -842,6 +842,11 @@ Firefox blocks local network requests for security reasons.
     return await this.post(`${this.getWorkspaceTreeRoute(workspaceNameOrId)}/paths`, requestData);
   }
 
+  // Context tree operations
+  async insertContextPath(contextId, path, autoCreateLayers = true) {
+    return await this.post(`/contexts/${contextId}/tree/paths`, { path, autoCreateLayers });
+  }
+
   // Document methods (tabs)
   async getContextDocuments(contextId, featureArray = [], options = {}) {
     // Always ensure we're looking for tab documents

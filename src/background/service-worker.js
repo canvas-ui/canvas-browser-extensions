@@ -816,6 +816,11 @@ runtimeAPI.onMessage.addListener((message, sender, sendResponse) => {
     run(handleInsertWorkspacePath(message.data, respond));
     return true;
 
+  case 'INSERT_CONTEXT_PATH':
+    // Insert path in context tree
+    run(handleInsertContextPath(message.data, respond));
+    return true;
+
   case 'OPEN_WORKSPACE':
     // Open a workspace by id/name
     run(handleOpenWorkspace(message.data, respond));
@@ -1512,6 +1517,37 @@ async function handleInsertWorkspacePath(data, sendResponse) {
     }
   } catch (error) {
     console.error('Failed to insert workspace path:', error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
+
+async function handleInsertContextPath(data, sendResponse) {
+  try {
+    const { contextId, path, autoCreateLayers = true } = data;
+    if (!contextId) throw new Error('Context id is required');
+    if (!path) throw new Error('Path is required');
+
+    const connectionSettings = await browserStorage.getConnectionSettings();
+    if (!connectionSettings.apiToken || !connectionSettings.serverUrl) {
+      throw new Error('Not connected to Canvas server - missing credentials');
+    }
+    if (!apiClient.apiToken) {
+      apiClient.initialize(
+        connectionSettings.serverUrl,
+        connectionSettings.apiBasePath,
+        connectionSettings.apiToken
+      );
+    }
+
+    const response = await apiClient.insertContextPath(contextId, path, autoCreateLayers);
+    if (response.status === 'success') {
+      await setupContextMenus();
+      sendResponse({ success: true, response: response.payload });
+    } else {
+      throw new Error(response.message || 'Failed to insert context path');
+    }
+  } catch (error) {
+    console.error('Failed to insert context path:', error);
     sendResponse({ success: false, error: error.message });
   }
 }
