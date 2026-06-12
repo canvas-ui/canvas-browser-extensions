@@ -315,6 +315,55 @@ body[data-host="panel"] {
   flex: 1;
 }
 
+/* Pinned selected paths — chips above the tree for at-a-glance feedback */
+.sync-to-pinned {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 16px;
+  background: #f1f6ff;
+  border-bottom: 1px solid #e1e5e9;
+  flex-shrink: 0;
+}
+
+.sync-to-pin-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 4px 2px 8px;
+  background: #0066cc;
+  color: #fff;
+  border-radius: 12px;
+  font-size: 12px;
+}
+
+.sync-to-pin-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sync-to-pin-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sync-to-pin-remove:hover {
+  background: rgba(255, 255, 255, 0.45);
+}
+
 /* Search Section */
 .search-section {
   padding: 12px 16px;

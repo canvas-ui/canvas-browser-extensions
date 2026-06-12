@@ -230,6 +230,7 @@ async function loadSettings() {
         apiBasePath: savedConnectionSettings.apiBasePath || '/rest/v2',
         apiToken: savedConnectionSettings.apiToken || '',
         authMode: savedConnectionSettings.authMode || 'token',
+        email: savedConnectionSettings.email || '',
         deviceId: savedConnectionSettings.deviceId || '',
         deviceToken: savedConnectionSettings.deviceToken || '',
         deviceName: savedConnectionSettings.deviceName || '',
@@ -319,6 +320,8 @@ function populateForm() {
   currentAuthMode = settings.connectionSettings.authMode || 'token';
   if (authModeToken) authModeToken.checked = currentAuthMode === 'token';
   if (authModeCredentials) authModeCredentials.checked = currentAuthMode === 'credentials';
+  // Refill the saved email (password is never persisted)
+  if (authEmail) authEmail.value = settings.connectionSettings.email || '';
   updateAuthModeVisibility(currentAuthMode);
   browserIdentity.value = settings.browserIdentity || getDefaultBrowserIdentity();
   if (newDeviceName) newDeviceName.value = settings.connectionSettings.deviceName || '';
@@ -468,6 +471,11 @@ async function handleConnect() {
       if (response.apiToken) {
         settings.connectionSettings.apiToken = response.apiToken;
         settings.connectionSettings.authMode = currentAuthMode;
+      }
+      // Remember the email so it refills on reopen. The password is never stored;
+      // reconnect relies on the JWT saved above.
+      if (currentAuthMode === 'credentials') {
+        settings.connectionSettings.email = authEmail.value.trim();
       }
       updateConnectionStatus(true);
 
@@ -963,6 +971,10 @@ async function handleSaveSettings() {
         apiBasePath: apiBasePath.value.trim(),
         apiToken: resolvedApiToken,
         authMode: currentAuthMode,
+        // Persist email (not password) so the field refills on reopen
+        email: currentAuthMode === 'credentials'
+          ? authEmail.value.trim()
+          : (settings.connectionSettings.email || ''),
         deviceId: assignedDevice.deviceId,
         deviceToken: assignedDevice.token,
         deviceName: assignedDevice.name || '',

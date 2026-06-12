@@ -63,7 +63,7 @@ let selectionBackBtn, contextsSelectionTab, workspacesSelectionTab;
 let contextsList, workspacesList;
 
 // Sync To panel elements
-let syncToOverlay, syncToTree, syncToPanelClose, syncToCount, syncToSearchInput, syncToSearchClear;
+let syncToOverlay, syncToTree, syncToPanelClose, syncToCount, syncToSearchInput, syncToSearchClear, syncToPinned;
 
 // State
 let currentConnection = { connected: false, context: null, mode: 'explorer', workspace: null };
@@ -347,6 +347,7 @@ function initializeElements() {
   syncToCount = document.getElementById('syncToCount');
   syncToSearchInput = document.getElementById('syncToSearchInput');
   syncToSearchClear = document.getElementById('syncToSearchClear');
+  syncToPinned = document.getElementById('syncToPinned');
 
   // Ad-hoc "send current page" button (header)
   addPageBtn = document.getElementById('addPageBtn');
@@ -3895,6 +3896,38 @@ function updateSyncToConfirmBtn() {
       ? `Sync current page to ${count} path${count !== 1 ? 's' : ''}`
       : 'Send current page to Canvas';
   }
+  renderSyncToPinned();
+}
+
+// Show the chosen paths as removable chips above the tree so the selection is
+// visible even when the matching nodes are scrolled out of view or filtered.
+function renderSyncToPinned() {
+  if (!syncToPinned) return;
+  syncToPinned.textContent = '';
+  if (syncToSelectedPaths.size === 0) {
+    syncToPinned.style.display = 'none';
+    return;
+  }
+  syncToPinned.style.display = 'flex';
+  for (const path of syncToSelectedPaths) {
+    const chip = createSecureElement('div', { className: 'sync-to-pin-chip' });
+    chip.appendChild(createSecureElement('span', { className: 'sync-to-pin-label' }, path));
+    const remove = createSecureElement('button', { className: 'sync-to-pin-remove', title: 'Remove' }, '×');
+    remove.addEventListener('click', () => unpinSyncToPath(path));
+    chip.appendChild(remove);
+    syncToPinned.appendChild(chip);
+  }
+}
+
+function unpinSyncToPath(path) {
+  syncToSelectedPaths.delete(path);
+  const node = syncToTree?.querySelector(`.tree-node[data-path="${CSS.escape(path)}"]`);
+  if (node) {
+    node.classList.remove('checked');
+    const cb = node.querySelector('.tree-checkbox');
+    if (cb) cb.checked = false;
+  }
+  updateSyncToConfirmBtn();
 }
 
 async function handleSyncToConfirm() {
