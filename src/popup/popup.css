@@ -261,7 +261,7 @@ body[data-host="panel"] {
   height: 30px;
   min-width: 30px;
   padding: 0;
-  margin-right: 4px;
+  margin-left: 10px;
   border: none;
   border-radius: 15px;
   background: #dc3545;
@@ -302,9 +302,9 @@ body[data-host="panel"] {
 
 /* Sync To searchbox row */
 .sync-to-search {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
   padding: 8px 16px;
   background: #fff;
   border-bottom: 1px solid #e1e5e9;
@@ -313,6 +313,16 @@ body[data-host="panel"] {
 
 .sync-to-search .search-input {
   flex: 1;
+  padding-right: 30px;
+}
+
+/* Clear "×" — anchored to the row (not the panel) and vertically centered */
+.sync-to-search .tree-search-clear {
+  right: 22px;
+  top: 50%;
+  transform: translateY(-50%);
+  align-items: center;
+  justify-content: center;
 }
 
 /* Tree "New Folder" context menu */

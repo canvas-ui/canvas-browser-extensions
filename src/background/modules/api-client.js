@@ -831,15 +831,15 @@ Firefox blocks local network requests for security reasons.
     return await this.fetchDeleteWithJson(url.toString(), ids);
   }
 
-  // Workspace tree operations
+  // Workspace tree operations.
+  // Insert is PUT .../trees/{tree}/path/{encodedPath} — the path is the URL splat
+  // (not a body field), matching the web UI and the `PUT /path/*` route.
   async insertWorkspacePath(workspaceNameOrId, path, data = null, autoCreateLayers = true) {
     await this.ensureWorkspaceStarted(workspaceNameOrId);
-    const requestData = {
-      path,
-      data,
-      autoCreateLayers
-    };
-    return await this.post(`${this.getWorkspaceTreeRoute(workspaceNameOrId)}/paths`, requestData);
+    const encodedPath = String(path || '/').split('/').filter(Boolean).map(encodeURIComponent).join('/');
+    const body = { autoCreateLayers };
+    if (data && typeof data === 'object') Object.assign(body, data);
+    return await this.put(`${this.getWorkspaceTreeRoute(workspaceNameOrId)}/path/${encodedPath}`, body);
   }
 
   // Context tree operations
