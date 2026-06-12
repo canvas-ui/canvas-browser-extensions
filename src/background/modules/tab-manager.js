@@ -850,6 +850,9 @@ export class TabManager {
         this.markTabAsSynced(tab.id, documentId, document.data?.url);
 
         console.log(`Tab synced successfully: ${tab.title}`);
+        // Non-intrusive visual feedback: briefly flash a green ✓ on the toolbar
+        // icon (covers background auto-sync where no popup is open).
+        this.flashSyncBadge();
         return {
           success: true,
           documentId: documentId,
@@ -865,6 +868,27 @@ export class TabManager {
         error: error.message
       };
     }
+  }
+
+  // Briefly show a green "✓" on the extension toolbar badge after a successful
+  // sync, then restore whatever was there (e.g. the "!" session-expired flag).
+  // Skips re-flashing while a ✓ is already showing so rapid syncs don't stack.
+  async flashSyncBadge() {
+    const action = (typeof chrome !== 'undefined' && chrome.action) ? chrome.action
+      : (typeof browser !== 'undefined' && browser.action) ? browser.action : null;
+    if (!action?.setBadgeText) return;
+    try {
+      const prev = await action.getBadgeText({});
+      if (prev === '✓') return;
+      await action.setBadgeText({ text: '✓' });
+      if (action.setBadgeBackgroundColor) await action.setBadgeBackgroundColor({ color: '#16a34a' });
+      setTimeout(async () => {
+        try {
+          await action.setBadgeText({ text: prev || '' });
+          if (prev && action.setBadgeBackgroundColor) await action.setBadgeBackgroundColor({ color: '#dc2626' });
+        } catch { /* ignore */ }
+      }, 1800);
+    } catch { /* ignore */ }
   }
 
   // Open a Canvas document as a browser tab
