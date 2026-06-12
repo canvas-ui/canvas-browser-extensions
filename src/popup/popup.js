@@ -63,7 +63,7 @@ let selectionBackBtn, contextsSelectionTab, workspacesSelectionTab;
 let contextsList, workspacesList;
 
 // Sync To panel elements
-let syncToOverlay, syncToTree, syncToPanelClose, syncToCount, syncToSearchInput, syncToSearchClear, syncToPinned;
+let syncToOverlay, syncToTree, syncToPanelClose, syncToCount, syncToSearchInput, syncToSearchClear, syncToPinned, syncToConfirmBtn;
 
 // Floating "New Folder" context menu element (shared by both trees)
 let treeCtxMenuEl = null;
@@ -351,6 +351,7 @@ function initializeElements() {
   syncToSearchInput = document.getElementById('syncToSearchInput');
   syncToSearchClear = document.getElementById('syncToSearchClear');
   syncToPinned = document.getElementById('syncToPinned');
+  syncToConfirmBtn = document.getElementById('syncToConfirmBtn');
 
   // Ad-hoc "send current page" button (header)
   addPageBtn = document.getElementById('addPageBtn');
@@ -419,6 +420,7 @@ function setupEventListeners() {
 
   // Sync To panel
   syncToPanelClose.addEventListener('click', () => closeSyncToPanel());
+  syncToConfirmBtn.addEventListener('click', () => handleSyncToConfirm());
   syncToSearchInput.addEventListener('input', () => {
     const query = syncToSearchInput.value.trim();
     syncToSearchClear.style.display = query ? 'inline-flex' : 'none';
@@ -4024,6 +4026,12 @@ function updateSyncToConfirmBtn() {
     addPageBtn.title = count > 0
       ? `Sync current page to ${count} path${count !== 1 ? 's' : ''}`
       : 'Send current page to Canvas';
+  }
+  // The overlay covers the popup header, so its footer Sync button is the
+  // reachable confirm inside the panel.
+  if (syncToConfirmBtn) {
+    syncToConfirmBtn.disabled = count === 0;
+    syncToConfirmBtn.textContent = count > 0 ? `Sync to ${count} path${count !== 1 ? 's' : ''}` : 'Sync';
   }
   renderSyncToPinned();
 }
