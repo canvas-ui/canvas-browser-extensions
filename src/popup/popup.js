@@ -4075,13 +4075,21 @@ async function handleSyncToConfirm() {
   closeSyncToPanel();
 
   try {
+    const failures = [];
     for (const path of paths) {
       const response = await sendMessageToBackground('SYNC_MULTIPLE_TABS', { tabIds, contextSpec: path });
       if (!response.success) {
         console.error(`Failed to sync to path ${path}:`, response.error);
+        failures.push({ path, error: response.error });
       }
     }
-    showToast(`Synced ${tabIds.length} tab(s) to ${paths.length} path(s)`, 'success');
+    if (failures.length > 0) {
+      // Surface the real reason (e.g. "No device assigned…") in the popup rather
+      // than only the console; one toast carries the first error.
+      showToast(`Sync failed: ${failures[0].error || 'Unknown error'}`, 'error');
+    } else {
+      showToast(`Synced ${tabIds.length} tab(s) to ${paths.length} path(s)`, 'success');
+    }
     await loadTabs();
   } catch (error) {
     console.error('Sync To failed:', error);

@@ -1507,10 +1507,9 @@ async function handleInsertWorkspacePath(data, sendResponse) {
 
     const response = await apiClient.insertWorkspacePath(wsIdOrName, path, nodeData, autoCreateLayers);
     if (response.status === 'success') {
-      // Refresh context menus since tree structure may have changed
-      console.log('🔧 Path inserted successfully, refreshing context menus...');
-      await setupContextMenus();
-
+      // Note: deliberately NOT rebuilding native context menus here — that
+      // refetches every workspace+tree (was firing "Workspaces retrieved" ~23×
+      // per folder create). The popup tree refreshes itself after creation.
       sendResponse({ success: true, response: response.payload });
     } else {
       throw new Error(response.message || 'Failed to insert workspace path');
@@ -1541,7 +1540,7 @@ async function handleInsertContextPath(data, sendResponse) {
 
     const response = await apiClient.insertContextPath(contextId, path, autoCreateLayers);
     if (response.status === 'success') {
-      await setupContextMenus();
+      // See handleInsertWorkspacePath: skip the costly native-menu rebuild.
       sendResponse({ success: true, response: response.payload });
     } else {
       throw new Error(response.message || 'Failed to insert context path');
