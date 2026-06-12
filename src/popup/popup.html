@@ -30,6 +30,12 @@
           </div>
         </div>
         <div class="header-right">
+          <button class="add-page-btn" id="addPageBtn" title="Send current page to Canvas">
+            <svg class="add-page-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            <span class="add-page-label">Sync</span>
+          </button>
           <button class="selector-btn" id="selectorBtn" title="Switch Workspace/Context">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="3" y="3" width="7" height="7"/>
@@ -266,12 +272,19 @@
           </svg>
         </button>
       </div>
+      <div class="sync-to-search">
+        <input type="text" id="syncToSearchInput" placeholder="Search paths..." class="search-input">
+        <button class="tree-search-clear" id="syncToSearchClear" title="Clear search" style="display: none;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
       <div class="sync-to-tree" id="syncToTree">
         <div class="loading-state">Loading tree...</div>
       </div>
       <div class="sync-to-footer">
         <span class="sync-to-count" id="syncToCount">0 paths selected</span>
-        <button class="action-btn primary" id="syncToConfirmBtn" disabled>Sync</button>
       </div>
     </div>
   </div>

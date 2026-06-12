@@ -38,7 +38,7 @@ function createSvgIcon(pathsStr, size = 14) {
 let connectionStatus, connectionText, contextId, contextUrl;
 let searchInput, sendNewTabsToCanvas, openTabsAddedToCanvas, showSyncedTabs, showHiddenTabs, showAllCanvasTabs;
 let browserToCanvasList, canvasToBrowserList;
-let syncAllBtn, syncToAllBtn, closeAllBtn, openAllBtn, canvasPrevPageBtn, canvasNextPageBtn, settingsBtn, dockBtn, logoBtn, selectorBtn;
+let syncAllBtn, syncToAllBtn, closeAllBtn, openAllBtn, canvasPrevPageBtn, canvasNextPageBtn, settingsBtn, dockBtn, logoBtn, selectorBtn, addPageBtn;
 let browserBulkActions, canvasBulkActions;
 let syncSelectedBtn, syncToSelectedBtn, syncCloseSelectedBtn, closeSelectedBtn, openSelectedBtn, removeSelectedBtn, deleteSelectedBtn;
 let selectAllBrowser, selectAllCanvas;
@@ -63,7 +63,7 @@ let selectionBackBtn, contextsSelectionTab, workspacesSelectionTab;
 let contextsList, workspacesList;
 
 // Sync To panel elements
-let syncToOverlay, syncToTree, syncToConfirmBtn, syncToPanelClose, syncToCount;
+let syncToOverlay, syncToTree, syncToPanelClose, syncToCount, syncToSearchInput, syncToSearchClear;
 
 // State
 let currentConnection = { connected: false, context: null, mode: 'explorer', workspace: null };
@@ -343,9 +343,13 @@ function initializeElements() {
   // Sync To panel elements
   syncToOverlay = document.getElementById('syncToOverlay');
   syncToTree = document.getElementById('syncToTree');
-  syncToConfirmBtn = document.getElementById('syncToConfirmBtn');
   syncToPanelClose = document.getElementById('syncToPanelClose');
   syncToCount = document.getElementById('syncToCount');
+  syncToSearchInput = document.getElementById('syncToSearchInput');
+  syncToSearchClear = document.getElementById('syncToSearchClear');
+
+  // Ad-hoc "send current page" button (header)
+  addPageBtn = document.getElementById('addPageBtn');
 
   toast = document.getElementById('toast');
 }
@@ -411,7 +415,24 @@ function setupEventListeners() {
 
   // Sync To panel
   syncToPanelClose.addEventListener('click', () => closeSyncToPanel());
-  syncToConfirmBtn.addEventListener('click', () => handleSyncToConfirm());
+  syncToSearchInput.addEventListener('input', () => {
+    const query = syncToSearchInput.value.trim();
+    syncToSearchClear.style.display = query ? 'inline-flex' : 'none';
+    filterTreeContainer(syncToTree, query);
+  });
+  syncToSearchClear.addEventListener('click', () => {
+    syncToSearchInput.value = '';
+    syncToSearchClear.style.display = 'none';
+    filterTreeContainer(syncToTree, '');
+  });
+
+  // Ad-hoc "send current page": left-click opens the Sync To tree for the active
+  // tab, then drives the confirm once a path is picked; right-click cancels.
+  addPageBtn.addEventListener('click', () => void handleAddPageClick());
+  addPageBtn.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    if (syncToOverlay.classList.contains('open')) closeSyncToPanel();
+  });
   openSelectedBtn.addEventListener('click', () => handleOpenSelected());
   removeSelectedBtn.addEventListener('click', () => handleRemoveSelected());
   deleteSelectedBtn.addEventListener('click', () => handleDeleteSelected());
@@ -2051,9 +2072,15 @@ function setupTreeEventListeners() {
   });
 }
 
+// Thin wrapper kept for the main tree view; both trees share the same markup so
+// the filter logic is parametrized on the container.
 function filterTreeView(query) {
+  filterTreeContainer(treeContainer, query);
+}
+
+function filterTreeContainer(container, query) {
   // Clear previous search state
-  treeContainer.querySelectorAll('.tree-node').forEach(node => {
+  container.querySelectorAll('.tree-node').forEach(node => {
     node.classList.remove('hidden-by-search', 'search-match');
     const label = node.querySelector('.node-label');
     if (label && label.dataset.originalText !== undefined) {
@@ -2061,7 +2088,7 @@ function filterTreeView(query) {
       delete label.dataset.originalText;
     }
   });
-  treeContainer.querySelectorAll('.tree-children[data-search-opened]').forEach(tc => {
+  container.querySelectorAll('.tree-children[data-search-opened]').forEach(tc => {
     tc.style.display = 'none';
     tc.removeAttribute('data-search-opened');
     const prevNode = tc.previousElementSibling;
@@ -2070,13 +2097,13 @@ function filterTreeView(query) {
       if (svg) svg.style.transform = '';
     }
   });
-  const prevNoResults = treeContainer.querySelector('.tree-no-results');
+  const prevNoResults = container.querySelector('.tree-no-results');
   if (prevNoResults) prevNoResults.remove();
 
   if (!query) return;
 
   const lowerQuery = query.toLowerCase();
-  const allNodes = Array.from(treeContainer.querySelectorAll('.tree-node'));
+  const allNodes = Array.from(container.querySelectorAll('.tree-node'));
 
   // Collect paths whose label matches the query
   const matchingPaths = new Set();
@@ -2131,7 +2158,7 @@ function filterTreeView(query) {
   });
 
   // Expand collapsed tree-children containers that contain visible nodes
-  treeContainer.querySelectorAll('.tree-children').forEach(tc => {
+  container.querySelectorAll('.tree-children').forEach(tc => {
     if (tc.style.display === 'none' && tc.querySelector('.tree-node:not(.hidden-by-search)')) {
       tc.style.display = 'block';
       tc.setAttribute('data-search-opened', 'true');
@@ -2147,7 +2174,7 @@ function filterTreeView(query) {
     const noResults = document.createElement('div');
     noResults.className = 'tree-no-results';
     noResults.textContent = `No folders matching "${query}"`;
-    treeContainer.appendChild(noResults);
+    container.appendChild(noResults);
   }
 }
 
@@ -3819,21 +3846,55 @@ async function openSyncToPanel(tabIds) {
     console.error('Failed to load tree for Sync To:', error);
   }
 
+  // Reset the searchbox each time the panel opens
+  if (syncToSearchInput) {
+    syncToSearchInput.value = '';
+    syncToSearchClear.style.display = 'none';
+  }
+
   renderSyncToTree();
   syncToOverlay.classList.add('open');
+  addPageBtn?.classList.add('active');
+}
+
+// Header "+" click: when the panel is closed, grab the active tab and open the
+// Sync To tree for it; when it's open with a selection, this button IS the Sync
+// action (the overlay has no footer confirm button).
+async function handleAddPageClick() {
+  if (syncToOverlay.classList.contains('open')) {
+    if (syncToSelectedPaths.size > 0) await handleSyncToConfirm();
+    return;
+  }
+  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (activeTab?.id == null) {
+    showToast('No active tab to send', 'error');
+    return;
+  }
+  openSyncToPanel([activeTab.id]);
 }
 
 function closeSyncToPanel() {
   syncToOverlay.classList.remove('open');
   syncToPendingTabIds = [];
   syncToSelectedPaths.clear();
+  addPageBtn?.classList.remove('active', 'ready');
+  if (syncToSearchInput) {
+    syncToSearchInput.value = '';
+    syncToSearchClear.style.display = 'none';
+  }
 }
 
 function updateSyncToConfirmBtn() {
   const count = syncToSelectedPaths.size;
   syncToCount.textContent = `${count} path${count !== 1 ? 's' : ''} selected`;
-  syncToConfirmBtn.disabled = count === 0;
-  syncToConfirmBtn.textContent = count > 0 ? `Sync to ${count} path${count !== 1 ? 's' : ''}` : 'Sync';
+  // The header "+" doubles as the confirm button: morph to "Sync" once a path is
+  // picked, revert to "+" otherwise.
+  addPageBtn?.classList.toggle('ready', count > 0);
+  if (addPageBtn) {
+    addPageBtn.title = count > 0
+      ? `Sync current page to ${count} path${count !== 1 ? 's' : ''}`
+      : 'Send current page to Canvas';
+  }
 }
 
 async function handleSyncToConfirm() {

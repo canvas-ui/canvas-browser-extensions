@@ -251,6 +251,70 @@ body[data-host="panel"] {
   color: #333;
 }
 
+/* Ad-hoc "send current page" button. Default: red circular "+".
+   When a Sync To path is selected (.ready) it morphs into a wider "Sync" pill. */
+.add-page-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0;
+  margin-right: 4px;
+  border: none;
+  border-radius: 15px;
+  background: #dc3545;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s ease, min-width 0.15s ease, padding 0.15s ease;
+}
+
+.add-page-btn:hover {
+  background: #c82333;
+}
+
+.add-page-btn .add-page-label {
+  display: none;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Selection made: hide the "+" glyph, reveal the "Sync" label, go primary blue. */
+.add-page-btn.ready {
+  min-width: 0;
+  padding: 0 14px;
+  border-radius: 15px;
+  background: #0066cc;
+}
+
+.add-page-btn.ready:hover {
+  background: #0056b3;
+}
+
+.add-page-btn.ready .add-page-icon {
+  display: none;
+}
+
+.add-page-btn.ready .add-page-label {
+  display: inline;
+}
+
+/* Sync To searchbox row */
+.sync-to-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: #fff;
+  border-bottom: 1px solid #e1e5e9;
+  flex-shrink: 0;
+}
+
+.sync-to-search .search-input {
+  flex: 1;
+}
+
 /* Search Section */
 .search-section {
   padding: 12px 16px;
