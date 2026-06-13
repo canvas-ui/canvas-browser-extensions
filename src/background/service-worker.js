@@ -7,6 +7,7 @@ import { webSocketClient } from './modules/websocket-client.js';
 import { tabManager } from './modules/tab-manager.js';
 import { syncEngine } from './modules/sync-engine.js';
 import { contextIntegration } from './modules/context-integration.js';
+import { broadcastToast, notifySyncError, queueSyncSuccess, reportSyncSuccess } from './modules/toast-bridge.js';
 
 console.log('🚀 Canvas Extension Service Worker loaded and starting...');
 console.log('🚀 Service Worker: Registering tab event listeners...');
@@ -462,6 +463,7 @@ async function handleAuthExpired() {
   }
   // Persistent signal even when the popup is closed.
   await setSessionBadge('expired');
+  broadcastToast('Session expired — reconnect in Settings', 'error', { osFallback: true });
   broadcastToPopup('auth.session.expired', {});
 }
 
@@ -631,8 +633,13 @@ tabsAPI.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
         if (syncResult.success) {
           console.log('✅ AUTO-SYNC: Successfully synced fully loaded tab:', tab.title);
+          const syncPath = mode === 'context'
+            ? `context/${currentContext.id}`
+            : `${currentWorkspace.name || currentWorkspace.id}${workspacePath || '/'}`;
+          queueSyncSuccess(syncPath);
         } else {
           console.error('❌ AUTO-SYNC: Failed to sync loaded tab:', syncResult.error || 'Unknown error');
+          notifySyncError(new Error(syncResult.error || 'Unknown error'));
         }
       } catch (error) {
         if (error instanceof AuthExpiredError) {
@@ -642,6 +649,7 @@ tabsAPI.onUpdated.addListener(async (tabId, changeInfo, tab) => {
           return;
         }
         console.error('❌ AUTO-SYNC: Exception syncing loaded tab:', error);
+        notifySyncError(error);
       }
     } catch (error) {
       if (error instanceof AuthExpiredError) {
@@ -2560,6 +2568,7 @@ async function handleSyncMultipleTabs(data, sendResponse) {
     sendResponse(result);
   } catch (error) {
     console.error('❌ handleSyncMultipleTabs failed:', error);
+    if (error instanceof AuthExpiredError) await handleAuthExpired();
     sendResponse({
       success: false,
       error: error.message
@@ -2793,28 +2802,6 @@ async function handleUpdateContextUrl(message, sendResponse) {
       success: false,
       error: error.message
     });
-  }
-}
-
-// Notification helper function for cross-browser compatibility
-async function showNotification(title, message) {
-  try {
-    const notificationsAPI = (typeof chrome !== 'undefined' && chrome.notifications) ? chrome.notifications : browser.notifications;
-
-    if (!notificationsAPI) {
-      console.warn('Notifications API not available');
-      return;
-    }
-
-    await notificationsAPI.create({
-      type: 'basic',
-      iconUrl: 'assets/icons/logo-wr_128x128.png',
-      title: title,
-      message: message,
-      priority: 1
-    });
-  } catch (error) {
-    console.error('Failed to show notification:', error);
   }
 }
 
@@ -3242,14 +3229,16 @@ if (contextMenusAPI && contextMenusAPI.onClicked) {
             }
             // Refresh context menus to update recent destinations list
             await setupContextMenus();
-            // Show success notification
-            const title = selectedTabs.length > 1 ? `${selectedTabs.length} tabs` : (selectedTabs[0].title || selectedTabs[0].url);
-            await showNotification('Sent to Canvas', `"${title}" was sent to Canvas`);
+            // Show success toast
+            reportSyncSuccess(selectedTabs.length, `context/${contextId}`);
           } else {
             console.error('Failed to sync tab to current context:', result.error);
+            notifySyncError(new Error(result.error || 'Failed to sync tab'));
           }
         } catch (e) {
           console.error('Exception syncing tab to current context:', e);
+          if (e instanceof AuthExpiredError) await handleAuthExpired();
+          else notifySyncError(e);
         }
       }
 
@@ -3289,14 +3278,15 @@ if (contextMenusAPI && contextMenusAPI.onClicked) {
 
               // Refresh context menus to update recent destinations list
               await setupContextMenus();
-              // Show success notification
-              const title = selectedTabs.length > 1 ? `${selectedTabs.length} tabs` : (selectedTabs[0].title || selectedTabs[0].url);
-              await showNotification('Sent to Canvas', `"${title}" was sent to ${workspaceName}${contextSpec}`);
+              reportSyncSuccess(selectedTabs.length, `${workspaceName}${contextSpec || '/'}`);
             } else {
               console.error('Failed to sync tab via context menu:', response.message);
+              notifySyncError(new Error(response.message || 'Failed to sync tab'));
             }
           } catch (e) {
             console.error('Exception syncing tab via context menu:', e);
+            if (e instanceof AuthExpiredError) await handleAuthExpired();
+            else notifySyncError(e);
           }
         }
       }
@@ -3330,14 +3320,15 @@ if (contextMenusAPI && contextMenusAPI.onClicked) {
             }
             // Refresh context menus to update recent destinations list
             await setupContextMenus();
-            // Show success notification
-            const title = selectedTabs.length > 1 ? `${selectedTabs.length} tabs` : (selectedTabs[0].title || selectedTabs[0].url);
-            await showNotification('Sent to Canvas', `"${title}" was sent to Canvas`);
+            reportSyncSuccess(selectedTabs.length, `context/${contextId}`);
           } else {
             console.error('Failed to sync tab to recent context:', result.error);
+            notifySyncError(new Error(result.error || 'Failed to sync tab'));
           }
         } catch (e) {
           console.error('Exception syncing tab to recent context:', e);
+          if (e instanceof AuthExpiredError) await handleAuthExpired();
+          else notifySyncError(e);
         }
       }
 
@@ -3377,14 +3368,15 @@ if (contextMenusAPI && contextMenusAPI.onClicked) {
 
               // Refresh context menus to update recent destinations list
               await setupContextMenus();
-              // Show success notification
-              const title = selectedTabs.length > 1 ? `${selectedTabs.length} tabs` : (selectedTabs[0].title || selectedTabs[0].url);
-              await showNotification('Sent to Canvas', `"${title}" was sent to ${workspaceName}${contextSpec}`);
+              reportSyncSuccess(selectedTabs.length, `${workspaceName}${contextSpec || '/'}`);
             } else {
               console.error('Failed to sync tab via context menu:', response.message);
+              notifySyncError(new Error(response.message || 'Failed to sync tab'));
             }
           } catch (e) {
             console.error('Exception syncing tab via context menu:', e);
+            if (e instanceof AuthExpiredError) await handleAuthExpired();
+            else notifySyncError(e);
           }
         }
       }
@@ -3430,14 +3422,15 @@ if (contextMenusAPI && contextMenusAPI.onClicked) {
 
               // Refresh context menus to update recent destinations list
               await setupContextMenus();
-              // Show success notification
-              const title = selectedTabs.length > 1 ? `${selectedTabs.length} tabs` : (selectedTabs[0].title || selectedTabs[0].url);
-              await showNotification('Sent to Canvas', `"${title}" was sent to ${workspaceName}${contextSpec}`);
+              reportSyncSuccess(selectedTabs.length, `${workspaceName}${contextSpec || '/'}`);
             } else {
               console.error('Failed to sync tab via context menu:', response.message);
+              notifySyncError(new Error(response.message || 'Failed to sync tab'));
             }
           } catch (e) {
             console.error('Exception syncing tab via context menu:', e);
+            if (e instanceof AuthExpiredError) await handleAuthExpired();
+            else notifySyncError(e);
           }
         }
       }

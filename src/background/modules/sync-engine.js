@@ -12,6 +12,7 @@ import { browserStorage } from './browser-storage.js';
 import { apiClient } from './api-client.js';
 import { tabManager } from './tab-manager.js';
 import { webSocketClient } from './websocket-client.js';
+import { notifySyncError, reportSyncSuccess } from './toast-bridge.js';
 
 export class SyncEngine {
   constructor() {
@@ -822,6 +823,7 @@ export class SyncEngine {
         console.log('SyncEngine: Auto-syncing browser tabs to Canvas...');
         const browserIdentity = await browserStorage.getBrowserIdentity();
         await tabManager.syncMultipleTabs(comparison.browserToCanvas, apiClient, contextId, browserIdentity, syncSettings);
+        reportSyncSuccess(comparison.browserToCanvas.length, `context/${contextId}`);
       }
 
       // Open Canvas tabs in browser (if auto-open enabled)
@@ -842,6 +844,7 @@ export class SyncEngine {
 
     } catch (error) {
       console.error('SyncEngine: Full sync failed:', error);
+      notifySyncError(error, 'Full sync');
       return { success: false, error: error.message };
     } finally {
       this.syncInProgress = false;
@@ -896,6 +899,7 @@ export class SyncEngine {
         const browserIdentity = await browserStorage.getBrowserIdentity();
         const documents = comparison.browserToCanvas.map(tab => tabManager.convertTabToDocument(tab, browserIdentity, syncSettings));
         await apiClient.insertWorkspaceDocuments(wsId, documents, workspacePath || '/', documents[0]?.featureArray || []);
+        reportSyncSuccess(comparison.browserToCanvas.length, workspacePath || '/');
       }
 
       if (syncSettings.openTabsAddedToCanvas && comparison.canvasToBrowser.length > 0) {
@@ -911,6 +915,7 @@ export class SyncEngine {
       };
     } catch (error) {
       console.error('SyncEngine: Explorer sync failed:', error);
+      notifySyncError(error, 'Explorer sync');
       return { success: false, error: error.message };
     } finally {
       this.syncInProgress = false;

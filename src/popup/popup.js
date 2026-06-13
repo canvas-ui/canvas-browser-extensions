@@ -201,6 +201,7 @@ runtime.onMessage.addListener((message) => {
       currentConnection.connected = false;
       updateConnectionStatus(currentConnection);
       showSessionExpiredBanner();
+      showToast('Session expired — reconnect in Settings', 'error');
       break;
 
     case 'auth.session.renewed':
@@ -209,6 +210,10 @@ runtime.onMessage.addListener((message) => {
       removeSessionExpiredBanner();
       updateConnectionStatus(currentConnection);
       refreshSessionInfo();
+      break;
+
+    case 'ui.toast':
+      if (message.data?.message) showToast(message.data.message, message.data.type || 'info');
       break;
 
     default:
@@ -2888,6 +2893,7 @@ async function handleSyncTab(tabId, shouldCloseAfterSync = false) {
     console.log('Sync tab response:', response);
 
     if (response.success) {
+      showSyncResultToast(response, { pageCount: 1 });
       // If Ctrl was held, close the tab after successful sync
       if (shouldCloseAfterSync) {
         console.log('Closing tab after sync as requested:', tabId);
@@ -2895,9 +2901,12 @@ async function handleSyncTab(tabId, shouldCloseAfterSync = false) {
       } else {
         await loadTabs(); // Refresh lists only if not closing
       }
+    } else {
+      showSyncResultToast(response);
     }
   } catch (error) {
     console.error('Failed to sync tab:', error);
+    showToast(`Sync failed: ${error.message}`, 'error');
   }
 }
 
@@ -3504,6 +3513,7 @@ async function handleSyncAll() {
 
     if (allSyncableTabs.length === 0) {
       console.log('❌ handleSyncAll: No browser tabs to sync');
+      showToast('No unsynced tabs to sync', 'info');
       return;
     }
 
@@ -3518,12 +3528,15 @@ async function handleSyncAll() {
 
     if (response.success) {
       console.log(`Synced ${response.successful}/${response.total} tabs`);
+      showSyncResultToast(response);
       await loadTabs(); // Refresh lists
     } else {
       console.error('Failed to sync all tabs:', response.error);
+      showSyncResultToast(response);
     }
   } catch (error) {
     console.error('Failed to sync all tabs:', error);
+    showToast(`Sync failed: ${error.message}`, 'error');
   }
 }
 
@@ -3615,15 +3628,21 @@ async function handleSyncWindow(windowId, closeAfterSync = false) {
     const tabIds = getUnsyncedTabIdsForWindow(windowId);
     console.log(`${closeAfterSync ? 'Syncing+closing' : 'Syncing'} window ${windowId} tabs:`, tabIds);
 
-    if (tabIds.length === 0) return;
+    if (tabIds.length === 0) {
+      showToast('No unsynced tabs in this window', 'info');
+      return;
+    }
 
     const response = await sendMessageToBackground('SYNC_MULTIPLE_TABS', { tabIds });
     console.log('Sync window response:', response);
 
     if (!response.success) {
       console.error('Failed to sync window tabs:', response.error);
+      showSyncResultToast(response);
       return;
     }
+
+    showSyncResultToast(response);
 
     if (closeAfterSync) {
       await closeTabs(tabIds);
@@ -3635,6 +3654,7 @@ async function handleSyncWindow(windowId, closeAfterSync = false) {
     }
   } catch (error) {
     console.error('Failed to sync window tabs:', error);
+    showToast(`Sync failed: ${error.message}`, 'error');
   }
 }
 
@@ -3662,6 +3682,7 @@ async function handleSyncSelected() {
 
     if (selectedIds.length === 0) {
       console.log('No tabs selected for syncing');
+      showToast('No tabs selected', 'warning');
       return;
     }
 
@@ -3670,13 +3691,16 @@ async function handleSyncSelected() {
 
     if (response.success) {
       console.log(`Synced ${response.successful}/${response.total} selected tabs`);
+      showSyncResultToast(response);
       // Don't clear selections to allow multiple operations
       await loadTabs(); // Refresh lists
     } else {
       console.error('Failed to sync selected tabs:', response.error);
+      showSyncResultToast(response);
     }
   } catch (error) {
     console.error('Failed to sync selected tabs:', error);
+    showToast(`Sync failed: ${error.message}`, 'error');
   }
 }
 
@@ -3686,6 +3710,7 @@ async function handleSyncAndCloseSelected() {
     console.log('Syncing+closing selected tabs:', selectedIds);
 
     if (selectedIds.length === 0) {
+      showToast('No tabs selected', 'warning');
       return;
     }
 
@@ -3694,13 +3719,16 @@ async function handleSyncAndCloseSelected() {
 
     if (!response.success) {
       console.error('Failed to sync selected tabs:', response.error);
+      showSyncResultToast(response);
       return;
     }
 
+    showSyncResultToast(response);
     await closeTabs(selectedIds);
     selectedBrowserTabs.clear();
   } catch (error) {
     console.error('Failed to sync+close selected tabs:', error);
+    showToast(`Sync failed: ${error.message}`, 'error');
   }
 }
 
@@ -3836,6 +3864,37 @@ async function handleDeleteSelected() {
 }
 
 // Add showToast function
+function getCurrentSyncPath() {
+  if (currentConnection.mode === 'context' && currentConnection.context?.id) {
+    return `context/${currentConnection.context.id}`;
+  }
+  const ws = currentConnection.workspace?.name || currentConnection.workspace?.id || '';
+  const path = currentWorkspacePath || '/';
+  return ws ? `${ws}${path}` : path;
+}
+
+function showSyncResultToast(response, { pageCount } = {}) {
+  if (!response) {
+    showToast('Sync failed: no response', 'error');
+    return;
+  }
+  if (response.error === 'session_expired') return;
+
+  const count = pageCount ?? response.successful ?? (response.success ? 1 : 0);
+  if (response.success && count > 0) {
+    const path = getCurrentSyncPath();
+    const pathSuffix = path ? ` to ${path}` : '';
+    const failed = response.failed ?? 0;
+    if (failed > 0) {
+      showToast(`Synced ${count} of ${response.total ?? count + failed} pages${pathSuffix}`, 'warning');
+    } else {
+      showToast(count === 1 ? `Synced 1 page${pathSuffix}` : `Synced ${count} pages${pathSuffix}`, 'success');
+    }
+    return;
+  }
+  showToast(`Sync failed: ${response.error || response.message || 'Unknown error'}`, 'error');
+}
+
 function showToast(message, type = 'info') {
   if (!toast) return console.log(message); // Fallback
 
@@ -4084,11 +4143,13 @@ async function handleSyncToConfirm() {
       }
     }
     if (failures.length > 0) {
-      // Surface the real reason (e.g. "No device assigned…") in the popup rather
-      // than only the console; one toast carries the first error.
-      showToast(`Sync failed: ${failures[0].error || 'Unknown error'}`, 'error');
+      showSyncResultToast({ success: false, error: failures[0].error || 'Unknown error' });
     } else {
-      showToast(`Synced ${tabIds.length} tab(s) to ${paths.length} path(s)`, 'success');
+      const pathSuffix = paths.length === 1 ? ` to ${paths[0]}` : ` to ${paths.length} paths`;
+      showToast(
+        tabIds.length === 1 ? `Synced 1 page${pathSuffix}` : `Synced ${tabIds.length} pages${pathSuffix}`,
+        'success'
+      );
     }
     await loadTabs();
   } catch (error) {
