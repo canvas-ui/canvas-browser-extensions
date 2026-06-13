@@ -81,14 +81,7 @@ export class WebSocketClient {
       console.log('WebSocketClient: Starting connection to', serverUrl);
 
       this.serverUrl = serverUrl;
-      // Prefer device token if present (works with new device token auth),
-      // fallback to user token (API token / JWT).
-      try {
-        const settings = await browserStorage.getConnectionSettings();
-        this.apiToken = settings?.deviceToken || apiToken;
-      } catch {
-        this.apiToken = apiToken;
-      }
+      this.apiToken = apiToken;
       this.contextId = contextId;
       this.shouldReconnect = true;
 

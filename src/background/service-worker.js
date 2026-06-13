@@ -102,14 +102,10 @@ async function renewSessionToken() {
     broadcastToPopup('auth.session.renewed', { expiresAt: getJwtExpiryMs(token) });
     console.log('Session token renewed successfully');
 
-    // Reconnect the WebSocket with the refreshed credentials when it relies on
-    // the user token (no device token configured).
+    // Reconnect the WebSocket with the refreshed credentials.
     try {
-      const refreshed = await browserStorage.getConnectionSettings();
-      if (!refreshed?.deviceToken) {
-        await webSocketClient.disconnect();
-        await initializeWebSocket();
-      }
+      await webSocketClient.disconnect();
+      await initializeWebSocket();
     } catch (e) {
       console.warn('Failed to refresh WebSocket after token renewal:', e?.message || e);
     }
@@ -934,14 +930,6 @@ runtimeAPI.onMessage.addListener((message, sender, sendResponse) => {
     run(handleGetConnectionSettings(message.data, respond));
     return true;
 
-  case 'GET_REGISTERED_DEVICES':
-    run(handleGetRegisteredDevices(message.data, respond));
-    return true;
-
-  case 'ASSIGN_BROWSER_DEVICE':
-    run(handleAssignBrowserDevice(message.data, respond));
-    return true;
-
   case 'GET_MODE_AND_SELECTION':
     // Get current sync mode and selection (context/workspace)
     run(handleGetModeAndSelection(respond));
@@ -1191,14 +1179,6 @@ async function handleConnect(data, sendResponse) {
       await browserStorage.setWorkspacePath('/');
       await browserStorage.setSyncMode('explorer');
       await browserStorage.setUserInfo(null);
-      await browserStorage.setConnectionSettings({
-        deviceId: '',
-        deviceToken: '',
-        deviceName: '',
-        devicePlatform: '',
-        deviceDescription: '',
-        deviceType: ''
-      });
     }
 
     // Initialize API client
@@ -1224,12 +1204,6 @@ async function handleConnect(data, sendResponse) {
       apiBasePath: data.apiBasePath,
       apiToken: resolvedApiToken,
       authMode: data.authMode || 'token',
-      deviceId: previousConnection?.deviceId || '',
-      deviceToken: previousConnection?.deviceToken || '',
-      deviceName: previousConnection?.deviceName || '',
-      devicePlatform: previousConnection?.devicePlatform || '',
-      deviceDescription: previousConnection?.deviceDescription || '',
-      deviceType: previousConnection?.deviceType || '',
       connected: true
     };
 
@@ -1927,79 +1901,6 @@ async function handleGetConnectionSettings(data, sendResponse) {
       success: false,
       error: error.message,
       settings: null
-    });
-  }
-}
-
-async function handleGetRegisteredDevices(data, sendResponse) {
-  try {
-    await ensureApiClientReady(data);
-    const response = await apiClient.get('/auth/devices');
-    const devices = apiClient.parseResponsePayload(response);
-    sendResponse({
-      success: true,
-      devices: Array.isArray(devices) ? devices : []
-    });
-  } catch (error) {
-    console.error('Failed to get registered devices:', error);
-    sendResponse({
-      success: false,
-      devices: [],
-      error: error.message
-    });
-  }
-}
-
-function isUuidLikeDeviceName(value) {
-  const normalizedValue = String(value || '').trim().replace(/-/g, '');
-  return /^[0-9a-f]{32}$/i.test(normalizedValue);
-}
-
-async function handleAssignBrowserDevice(data, sendResponse) {
-  try {
-    if (!data?.browserIdentity) {
-      throw new Error('Browser identity is required');
-    }
-
-    await ensureApiClientReady(data);
-
-    const profile = apiClient.buildBrowserDeviceProfile(data.browserIdentity);
-    const payload = {
-      ...profile,
-      type: 'browser'
-    };
-
-    if (data.deviceId && !data.registerNew) {
-      payload.deviceId = String(data.deviceId).trim();
-      payload.name = String(data.deviceName || profile.name).trim() || profile.name;
-      payload.platform = String(data.devicePlatform || profile.platform || '').trim() || profile.platform;
-      if (data.deviceDescription !== undefined) payload.description = String(data.deviceDescription || '').trim() || undefined;
-      if (isUuidLikeDeviceName(payload.name)) {
-        throw new Error('Selected device uses a UUID as its name. Register a new device with a real name.');
-      }
-    } else {
-      const name = String(data.deviceName || '').trim();
-      const platform = String(data.devicePlatform || '').trim();
-      if (!name) throw new Error('Device name is required');
-      if (isUuidLikeDeviceName(name)) throw new Error('Device name cannot be a UUID. Use something a human can recognize.');
-      if (!platform) throw new Error('Device OS is required');
-      if (data.deviceId) payload.deviceId = String(data.deviceId).trim();
-      payload.name = name;
-      payload.platform = platform;
-      payload.description = String(data.deviceDescription || '').trim() || undefined;
-    }
-
-    const response = await apiClient.post('/auth/devices/register', payload);
-    const device = apiClient.parseResponsePayload(response);
-    sendResponse({
-      success: true,
-      device
-    });
-  } catch (error) {
-    console.error('Failed to assign browser device:', error);
-    sendResponse({
-      success: false,
-      error: error.message
     });
   }
 }

@@ -47,9 +47,6 @@ export class CanvasApiClient {
     this.baseUrl = null;
     this.apiBasePath = '/rest/v2';
     this.userToken = null;
-    this.deviceToken = null;
-    this.deviceTokenPromise = null;
-    this.deviceId = null;
     this.connected = false;
     this.appKey = 'canvas-extension';
     this.startedWorkspaces = new Set();
@@ -94,7 +91,7 @@ export class CanvasApiClient {
     const endpoint = url.replace(`${this.baseUrl}${this.apiBasePath}`, '');
     const resp = await fetch(url, {
       method: 'DELETE',
-      headers: await this.buildHeaders('DELETE', endpoint),
+      headers: await this.buildHeaders(),
       body: JSON.stringify(body)
     });
     const durationMs = Math.round(performance.now() - startedAt);
@@ -117,9 +114,6 @@ export class CanvasApiClient {
     this.userToken = apiToken;
 
     if (connectionChanged) {
-      this.deviceToken = null;
-      this.deviceTokenPromise = null;
-      this.deviceId = null;
       this.startedWorkspaces.clear();
     }
   }
@@ -127,13 +121,6 @@ export class CanvasApiClient {
   // Build full API URL
   buildUrl(endpoint) {
     return `${this.baseUrl}${this.apiBasePath}${endpoint}`;
-  }
-
-  shouldUseDeviceToken(method, endpoint) {
-    const m = String(method || 'GET').toUpperCase();
-    if (!(m === 'POST' || m === 'PUT' || m === 'PATCH')) return false;
-    // Only for write-ingest endpoints. Deletes/listing keep using user token.
-    return /\/(contexts|workspaces)\/[^/]+\/documents\b/.test(endpoint);
   }
 
   isBrowserScopedSyncEnabled(syncSettings) {
@@ -158,38 +145,6 @@ export class CanvasApiClient {
     this.requestStats = { count: 0, totalMs: 0, last: null };
   }
 
-  getBrowserPlatform() {
-    const ua = navigator.userAgent || '';
-    const platform = navigator.userAgentData?.platform || navigator.platform || '';
-    const value = `${platform} ${ua}`.toLowerCase();
-
-    if (value.includes('win')) return 'windows';
-    if (value.includes('mac')) return 'mac';
-    if (value.includes('linux')) return 'linux';
-    if (value.includes('android')) return 'android';
-    if (value.includes('iphone') || value.includes('ipad') || value.includes('ios')) return 'ios';
-    return platform || 'unknown';
-  }
-
-  getBrowserArch() {
-    const arch = navigator.userAgentData?.architecture;
-    return typeof arch === 'string' && arch.trim() ? arch.trim() : undefined;
-  }
-
-  buildBrowserDeviceProfile(identity) {
-    const browserName = String(identity || 'browser').trim() || 'browser';
-    const platform = this.getBrowserPlatform();
-
-    return {
-      name: browserName,
-      hostname: browserName,
-      description: `Canvas browser extension (${platform})`,
-      platform,
-      arch: this.getBrowserArch(),
-      type: 'browser'
-    };
-  }
-
   async ensureWorkspaceStarted(workspaceNameOrId) {
     const workspaceKey = encodeURIComponent(workspaceNameOrId);
     if (this.startedWorkspaces.has(workspaceKey)) return;
@@ -198,78 +153,15 @@ export class CanvasApiClient {
     this.startedWorkspaces.add(workspaceKey);
   }
 
-  async ensureDeviceToken() {
-    if (this.deviceToken) return this.deviceToken;
-    if (this.deviceTokenPromise) return this.deviceTokenPromise;
-
-    const settings = await browserStorage.getConnectionSettings();
-    const storedToken = settings?.deviceToken;
-    const storedId = settings?.deviceId;
-    const storedTokenServerUrl = settings?.deviceTokenServerUrl;
-    if (storedToken && storedTokenServerUrl === this.baseUrl) {
-      this.deviceToken = storedToken;
-      this.deviceId = storedId || null;
-      return storedToken;
-    }
-
-    if (!this.userToken) throw new Error('No user token available to register device');
-    if (!storedId) throw new Error('No device assigned to this browser. Pick or register a device in extension settings.');
-
-    this.deviceTokenPromise = (async () => {
-      const identity = await browserStorage.getBrowserIdentity();
-      const profile = {
-        ...this.buildBrowserDeviceProfile(identity),
-        name: String(settings?.deviceName || '').trim() || String(settings?.browserIdentity || identity || 'browser').trim() || 'browser',
-        description: settings?.deviceDescription || undefined,
-        platform: settings?.devicePlatform || this.getBrowserPlatform(),
-        type: settings?.deviceType || 'browser'
-      };
-
-      const data = await this.post('/auth/devices/register', {
-        ...profile,
-        deviceId: String(storedId).trim()
-      });
-      const body = this.parseResponsePayload(data);
-      const token = body?.token;
-      const deviceId = body?.deviceId;
-      if (!token) throw new Error('Device registration did not return a device token');
-
-      this.deviceToken = token;
-      this.deviceId = deviceId || null;
-
-      await browserStorage.setConnectionSettings({
-        deviceToken: this.deviceToken,
-        deviceId: this.deviceId,
-        deviceName: body?.name || profile.name,
-        devicePlatform: body?.platform || profile.platform,
-        deviceDescription: body?.description || profile.description,
-        deviceType: body?.type || profile.type,
-        deviceTokenServerUrl: this.baseUrl
-      });
-
-      return this.deviceToken;
-    })();
-
-    try {
-      return await this.deviceTokenPromise;
-    } finally {
-      this.deviceTokenPromise = null;
-    }
-  }
-
   // Build request headers
-  async buildHeaders(method, endpoint) {
+  async buildHeaders() {
     const headers = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
       'X-App-Name': this.appKey
     };
 
-    const useDevice = this.shouldUseDeviceToken(method, endpoint);
-    if (useDevice) {
-      const token = await this.ensureDeviceToken();
-      headers['Authorization'] = `Bearer ${token}`;
-    } else if (this.userToken) {
+    if (this.userToken) {
       headers['Authorization'] = `Bearer ${this.userToken}`;
     }
 
@@ -279,7 +171,7 @@ export class CanvasApiClient {
   // Generic HTTP request method
   async request(method, endpoint, data = null) {
     const url = this.buildUrl(endpoint);
-    const headers = await this.buildHeaders(method, endpoint);
+    const headers = await this.buildHeaders();
     const startedAt = performance.now();
 
     // Firefox compatibility: avoid CORS issues for local network connections

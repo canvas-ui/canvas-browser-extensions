@@ -76,60 +76,6 @@
           <small class="help-text">Sign in with your Canvas account credentials</small>
         </div>
 
-        <div class="form-group">
-          <label for="deviceSelect">Assigned Device</label>
-          <select id="deviceSelect" class="input-field" disabled>
-            <option value="">Connect first to load devices...</option>
-          </select>
-          <small class="help-text" id="deviceSelectionHelp">Pick an existing device or register a named one for this browser.</small>
-        </div>
-
-        <div class="current-context" id="deviceDetailsSection" style="display: none;">
-          <h3>Selected Device</h3>
-          <div class="context-info">
-            <div class="context-id" id="selectedDeviceName">-</div>
-            <div class="context-url" id="selectedDeviceId">-</div>
-            <div class="context-url" id="selectedDevicePlatform">-</div>
-            <div class="context-url" id="selectedDeviceDescription">-</div>
-          </div>
-        </div>
-
-        <div class="connection-status" id="deviceRegistrationSection" style="display: none;">
-          <div class="status-text" style="margin-bottom: 8px;">Register Browser Device</div>
-          <div class="status-details" style="margin-bottom: 16px;">Set a real device name. UUIDs are for databases, not humans.</div>
-
-          <div class="form-group">
-            <label for="generatedDeviceId">Device ID</label>
-            <input type="text" id="generatedDeviceId" class="input-field generated-id-field" readonly>
-            <small class="help-text">Generated automatically as UUIDv4.</small>
-          </div>
-
-          <div class="form-group">
-            <label for="newDeviceName">Device Name</label>
-            <input type="text" id="newDeviceName" placeholder="e.g., Work Laptop, MAC Pro"
-                   class="input-field">
-          </div>
-
-          <div class="form-group">
-            <label for="newDevicePlatform">Operating System</label>
-            <select id="newDevicePlatform" class="input-field">
-              <option value="">Select OS...</option>
-              <option value="windows">Windows</option>
-              <option value="mac">macOS</option>
-              <option value="linux">Linux</option>
-              <option value="android">Android</option>
-              <option value="ios">iOS</option>
-              <option value="unknown">Other</option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label for="newDeviceDescription">Description</label>
-            <input type="text" id="newDeviceDescription" placeholder="Optional"
-                   class="input-field">
-          </div>
-        </div>
-
         <div class="form-actions">
           <button type="button" id="testConnectionBtn" class="btn secondary">Test Connection</button>
           <button type="button" id="connectBtn" class="btn primary">Connect</button>

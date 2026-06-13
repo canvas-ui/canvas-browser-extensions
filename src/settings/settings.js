@@ -4,10 +4,6 @@
 // DOM elements
 let browserIdentity, serverUrl, apiBasePath, apiToken;
 let authModeToken, authModeCredentials, apiTokenGroup, credentialsGroup, authEmail, authPassword;
-let deviceSelect, deviceSelectionHelp, deviceRegistrationSection;
-let deviceDetailsSection, selectedDeviceName, selectedDeviceId, selectedDevicePlatform, selectedDeviceDescription;
-let generatedDeviceId;
-let newDeviceName, newDevicePlatform, newDeviceDescription;
 let testConnectionBtn, connectBtn, disconnectBtn;
 let statusDot, statusText, statusDetails;
 let userInfo, userName, userServer;
@@ -29,13 +25,9 @@ let isConnected = false;
 let isBoundToContext = false;
 let availableContexts = [];
 let availableWorkspaces = [];
-let availableDevices = [];
 let settings = {};
 let currentMode = 'explorer';
 let lastTabSyncDebug = null;
-let currentGeneratedDeviceId = '';
-
-const REGISTER_NEW_DEVICE_VALUE = '__register_new_device__';
 
 // Initialize settings page
 document.addEventListener('DOMContentLoaded', async () => {
@@ -69,18 +61,6 @@ function initializeElements() {
   credentialsGroup = document.getElementById('credentialsGroup');
   authEmail = document.getElementById('authEmail');
   authPassword = document.getElementById('authPassword');
-  deviceSelect = document.getElementById('deviceSelect');
-  deviceSelectionHelp = document.getElementById('deviceSelectionHelp');
-  deviceRegistrationSection = document.getElementById('deviceRegistrationSection');
-  deviceDetailsSection = document.getElementById('deviceDetailsSection');
-  selectedDeviceName = document.getElementById('selectedDeviceName');
-  selectedDeviceId = document.getElementById('selectedDeviceId');
-  selectedDevicePlatform = document.getElementById('selectedDevicePlatform');
-  selectedDeviceDescription = document.getElementById('selectedDeviceDescription');
-  generatedDeviceId = document.getElementById('generatedDeviceId');
-  newDeviceName = document.getElementById('newDeviceName');
-  newDevicePlatform = document.getElementById('newDevicePlatform');
-  newDeviceDescription = document.getElementById('newDeviceDescription');
 
   // Connection controls
 
@@ -178,7 +158,6 @@ function setupEventListeners() {
 
   // Auto-generate browser identity if empty
   browserIdentity.addEventListener('blur', handleBrowserIdentityBlur);
-  deviceSelect.addEventListener('change', updateDeviceSelectionUI);
 
   // Sync filtering options
   syncOnlyTaggedTabs.addEventListener('change', () => {
@@ -231,12 +210,6 @@ async function loadSettings() {
         apiToken: savedConnectionSettings.apiToken || '',
         authMode: savedConnectionSettings.authMode || 'token',
         email: savedConnectionSettings.email || '',
-        deviceId: savedConnectionSettings.deviceId || '',
-        deviceToken: savedConnectionSettings.deviceToken || '',
-        deviceName: savedConnectionSettings.deviceName || '',
-        devicePlatform: savedConnectionSettings.devicePlatform || '',
-        deviceDescription: savedConnectionSettings.deviceDescription || '',
-        deviceType: savedConnectionSettings.deviceType || 'browser',
         connected: savedConnectionSettings.connected || false
       },
       syncSettings: {
@@ -271,8 +244,7 @@ async function loadSettings() {
     if (isConnected) {
       await Promise.all([
         loadContexts(),
-        loadWorkspaces(),
-        loadRegisteredDevices()
+        loadWorkspaces()
       ]);
 
       // Preselect dropdowns if values exist - this will be handled in populate functions
@@ -324,10 +296,6 @@ function populateForm() {
   if (authEmail) authEmail.value = settings.connectionSettings.email || '';
   updateAuthModeVisibility(currentAuthMode);
   browserIdentity.value = settings.browserIdentity || getDefaultBrowserIdentity();
-  if (newDeviceName) newDeviceName.value = settings.connectionSettings.deviceName || '';
-  if (newDevicePlatform) newDevicePlatform.value = settings.connectionSettings.devicePlatform || '';
-  if (newDeviceDescription) newDeviceDescription.value = settings.connectionSettings.deviceDescription || '';
-  populateDeviceSelect();
 
   // Sync settings
   openTabsAddedToCanvas.checked = settings.syncSettings.openTabsAddedToCanvas;
@@ -411,8 +379,7 @@ async function handleTestConnection() {
         // Load contexts and workspaces if authenticated
         await Promise.all([
           loadContexts(),
-          loadWorkspaces(),
-          loadRegisteredDevices(connectionData)
+          loadWorkspaces()
         ]);
       } else if (response.connected) {
         showToast('⚠️ Server reachable but authentication failed - check API token', 'warning');
@@ -486,7 +453,7 @@ async function handleConnect() {
       }
 
       // Load contexts and workspaces
-      await Promise.all([loadContexts(), loadWorkspaces(), loadRegisteredDevices()]);
+      await Promise.all([loadContexts(), loadWorkspaces()]);
 
       const universeWorkspace = getUniverseWorkspace();
       if (!universeWorkspace) {
@@ -541,8 +508,6 @@ async function handleDisconnect() {
     // Simulate success for now
     setTimeout(() => {
       isConnected = false;
-      availableDevices = [];
-      populateDeviceSelect();
       updateConnectionStatus(false);
       showToast('Disconnected successfully', 'success');
       setButtonLoading(disconnectBtn, false);
@@ -704,117 +669,6 @@ function getUniverseWorkspace() {
   return availableWorkspaces.find((workspace) => workspace.name === 'universe') || null;
 }
 
-async function loadRegisteredDevices(connectionOverride = null) {
-  try {
-    if (!isConnected && !connectionOverride) {
-      availableDevices = [];
-      populateDeviceSelect();
-      return;
-    }
-
-    const response = await sendMessageToBackground('GET_REGISTERED_DEVICES', connectionOverride);
-    if (!response?.success) {
-      throw new Error(response?.error || 'Failed to load devices');
-    }
-
-    availableDevices = Array.isArray(response.devices) ? response.devices : [];
-    populateDeviceSelect();
-  } catch (error) {
-    console.error('Failed to load registered devices:', error);
-    availableDevices = [];
-    populateDeviceSelect();
-    showToast(`Failed to load devices: ${error.message}`, 'error');
-  }
-}
-
-function populateDeviceSelect() {
-  if (!deviceSelect) return;
-
-  const previousValue = deviceSelect.value;
-  deviceSelect.textContent = '';
-  const defaultOption = document.createElement('option');
-  defaultOption.value = '';
-  if (!isConnected) {
-    defaultOption.textContent = 'Connect first to load devices...';
-  } else {
-    defaultOption.textContent = availableDevices.length > 0 ? 'Select a device...' : 'No registered devices found';
-  }
-  deviceSelect.appendChild(defaultOption);
-
-  availableDevices.forEach((device) => {
-    const option = document.createElement('option');
-    option.value = device.deviceId;
-    const platform = device.platform ? ` (${device.platform})` : '';
-    option.textContent = `${device.name || device.deviceId}${platform}`;
-    deviceSelect.appendChild(option);
-  });
-
-  if (isConnected) {
-    const registerOption = document.createElement('option');
-    registerOption.value = REGISTER_NEW_DEVICE_VALUE;
-    registerOption.textContent = 'Register a new device';
-    deviceSelect.appendChild(registerOption);
-  }
-
-  deviceSelect.disabled = !isConnected;
-  if (previousValue === REGISTER_NEW_DEVICE_VALUE) {
-    deviceSelect.value = REGISTER_NEW_DEVICE_VALUE;
-  } else if (availableDevices.some((device) => device.deviceId === previousValue)) {
-    deviceSelect.value = previousValue;
-  } else if (availableDevices.some((device) => device.deviceId === settings.connectionSettings.deviceId)) {
-    deviceSelect.value = settings.connectionSettings.deviceId;
-  } else if (isConnected && availableDevices.length === 0) {
-    deviceSelect.value = REGISTER_NEW_DEVICE_VALUE;
-  } else {
-    deviceSelect.value = '';
-  }
-
-  updateDeviceSelectionUI();
-}
-
-function updateDeviceSelectionUI() {
-  const hasDevices = availableDevices.length > 0;
-  const isRegistering = !hasDevices || deviceSelect.value === REGISTER_NEW_DEVICE_VALUE;
-  const selectedDevice = availableDevices.find((device) => device.deviceId === deviceSelect.value) || null;
-
-  if (deviceRegistrationSection) {
-    deviceRegistrationSection.style.display = isConnected && isRegistering ? 'block' : 'none';
-  }
-
-  if (deviceDetailsSection) {
-    deviceDetailsSection.style.display = selectedDevice ? 'block' : 'none';
-  }
-
-  if (deviceSelectionHelp) {
-    if (!isConnected) {
-      deviceSelectionHelp.textContent = 'Connect first to load devices.';
-    } else if (selectedDevice) {
-      deviceSelectionHelp.textContent = 'Selected device details are shown below.';
-    } else {
-      deviceSelectionHelp.textContent = 'Register a named device for this browser.';
-    }
-  }
-
-  if (selectedDevice) {
-    if (selectedDeviceName) selectedDeviceName.textContent = selectedDevice.name || 'Unnamed device';
-    if (selectedDeviceId) selectedDeviceId.textContent = `ID: ${selectedDevice.deviceId || '-'}`;
-    if (selectedDevicePlatform) selectedDevicePlatform.textContent = `OS: ${selectedDevice.platform || '-'}`;
-    if (selectedDeviceDescription) {
-      selectedDeviceDescription.textContent = selectedDevice.description
-        ? `Description: ${selectedDevice.description}`
-        : 'Description: -';
-    }
-  }
-
-  if (isRegistering) {
-    ensureGeneratedDeviceId();
-    if (generatedDeviceId) generatedDeviceId.value = currentGeneratedDeviceId;
-    if (newDevicePlatform && !newDevicePlatform.value) {
-      newDevicePlatform.value = getDefaultDevicePlatform();
-    }
-  }
-}
-
 function updateModeVisibility(mode) {
   if (!contextSettings || !explorerSettings) return;
   if (mode === 'context') {
@@ -958,8 +812,6 @@ async function handleSaveSettings() {
       await sendMessageToBackground('SET_MODE_AND_SELECTION', { mode: 'explorer', workspace: ws });
     }
 
-    const assignedDevice = await resolveDeviceAssignment();
-
     // When using credentials auth, the JWT was obtained during connect and stored in settings
     const resolvedApiToken = currentAuthMode === 'credentials'
       ? settings.connectionSettings.apiToken
@@ -975,13 +827,6 @@ async function handleSaveSettings() {
         email: currentAuthMode === 'credentials'
           ? authEmail.value.trim()
           : (settings.connectionSettings.email || ''),
-        deviceId: assignedDevice.deviceId,
-        deviceToken: assignedDevice.token,
-        deviceName: assignedDevice.name || '',
-        devicePlatform: assignedDevice.platform || '',
-        deviceDescription: assignedDevice.description || '',
-        deviceType: assignedDevice.type || 'browser',
-        deviceTokenServerUrl: serverUrl.value.trim().replace(/\/$/, ''),
         connected: isConnected
       },
       syncSettings: {
@@ -1024,74 +869,6 @@ async function handleSaveSettings() {
   }
 }
 
-async function resolveDeviceAssignment() {
-  const connectionData = {
-    serverUrl: serverUrl.value.trim(),
-    apiBasePath: apiBasePath.value.trim(),
-    apiToken: apiToken.value.trim(),
-    browserIdentity: browserIdentity.value.trim()
-  };
-
-  const selectedValue = deviceSelect.value;
-
-  if (selectedValue && selectedValue !== REGISTER_NEW_DEVICE_VALUE) {
-    const selectedDevice = availableDevices.find((device) => device.deviceId === selectedValue);
-    if (!selectedDevice) {
-      throw new Error('Pick a registered device for this browser');
-    }
-    if (isUuidLike(selectedDevice.name || '')) {
-      throw new Error('Selected device uses a UUID as its name. Register a new device with a real name.');
-    }
-
-    const response = await sendMessageToBackground('ASSIGN_BROWSER_DEVICE', {
-      ...connectionData,
-      deviceId: selectedDevice.deviceId,
-      deviceName: selectedDevice.name,
-      devicePlatform: selectedDevice.platform,
-      deviceDescription: selectedDevice.description
-    });
-    if (!response?.success || !response.device?.deviceId || !response.device?.token) {
-      throw new Error(response?.error || 'Failed to assign selected device');
-    }
-    return response.device;
-  }
-
-  if (availableDevices.length > 0 && selectedValue !== REGISTER_NEW_DEVICE_VALUE) {
-    throw new Error('Pick a registered device or choose "Register a new device"');
-  }
-
-  const deviceNameValue = newDeviceName.value.trim();
-  const devicePlatformValue = newDevicePlatform.value.trim();
-  if (!deviceNameValue) {
-    throw new Error('Device name is required');
-  }
-  if (isUuidLike(deviceNameValue)) {
-    throw new Error('Device name cannot be a UUID. Use something a human can recognize.');
-  }
-  if (!devicePlatformValue) {
-    throw new Error('Device OS is required');
-  }
-
-  const response = await sendMessageToBackground('ASSIGN_BROWSER_DEVICE', {
-    ...connectionData,
-    registerNew: true,
-    deviceId: ensureGeneratedDeviceId(),
-    deviceName: deviceNameValue,
-    devicePlatform: devicePlatformValue,
-    deviceDescription: newDeviceDescription.value.trim()
-  });
-  if (!response?.success || !response.device?.deviceId || !response.device?.token) {
-    throw new Error(response?.error || 'Failed to register device');
-  }
-
-  availableDevices = [response.device];
-  currentGeneratedDeviceId = '';
-  populateDeviceSelect();
-  deviceSelect.value = response.device.deviceId;
-  updateDeviceSelectionUI();
-  return response.device;
-}
-
 async function handleResetSettings() {
   if (!confirm('Reset all settings to defaults? This cannot be undone.')) {
     return;
@@ -1127,31 +904,6 @@ async function generateBrowserIdentity() {
   browserIdentity.value = getDefaultBrowserIdentity();
 }
 
-function ensureGeneratedDeviceId() {
-  if (!currentGeneratedDeviceId) {
-    currentGeneratedDeviceId = generateUuidV4();
-  }
-  return currentGeneratedDeviceId;
-}
-
-function generateUuidV4() {
-  if (globalThis.crypto?.randomUUID) {
-    return globalThis.crypto.randomUUID();
-  }
-
-  const bytes = new Uint8Array(16);
-  globalThis.crypto.getRandomValues(bytes);
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
-
-function isUuidLike(value) {
-  const normalizedValue = String(value || '').trim().replace(/-/g, '');
-  return /^[0-9a-f]{32}$/i.test(normalizedValue);
-}
-
 function getDefaultBrowserIdentity() {
   const userAgent = navigator.userAgent || '';
   if (userAgent.includes('Firefox')) return 'firefox';
@@ -1159,16 +911,6 @@ function getDefaultBrowserIdentity() {
   if (userAgent.includes('Chrome')) return 'chrome';
   if (userAgent.includes('Safari')) return 'safari';
   return 'browser';
-}
-
-function getDefaultDevicePlatform() {
-  const userAgent = navigator.userAgent || '';
-  if (userAgent.includes('Android')) return 'android';
-  if (userAgent.includes('iPhone') || userAgent.includes('iPad')) return 'ios';
-  if (userAgent.includes('Windows')) return 'windows';
-  if (userAgent.includes('Mac OS X') || userAgent.includes('Macintosh')) return 'mac';
-  if (userAgent.includes('Linux')) return 'linux';
-  return 'unknown';
 }
 
 function validateConnectionForm() {
