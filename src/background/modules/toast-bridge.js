@@ -34,7 +34,10 @@ async function osNotify(title, message) {
 
 export function broadcastToast(message, type = 'info', { osFallback = false } = {}) {
   sendPopupToast(message, type);
-  if (osFallback || type === 'error') {
+  // OS notifications are opt-in only. Connection/sync errors recur on every
+  // retry while offline or session-expired, so they rely on the toolbar
+  // badge + in-popup banner instead of spamming the OS notification center.
+  if (osFallback) {
     const title = type === 'error' ? 'Canvas Extension Error' : type === 'success' ? 'Synced' : 'Canvas';
     void osNotify(title, message);
   }
@@ -68,9 +71,7 @@ export function queueSyncSuccess(path = null) {
 export function notifySyncError(error, label = 'Sync') {
   const msg = error?.message || String(error);
   const isAuth = error?.name === 'AuthExpiredError' || /session expired/i.test(msg);
-  broadcastToast(
-    isAuth ? 'Session expired — reconnect in Settings' : `${label} failed: ${msg}`,
-    'error',
-    { osFallback: true }
-  );
+  // No OS fallback: this fires on every retry while offline/expired and the
+  // toolbar badge + in-popup banner already surface the persistent state.
+  broadcastToast(isAuth ? 'Session expired — reconnect in Settings' : `${label} failed: ${msg}`, 'error');
 }

@@ -676,6 +676,13 @@ function updateConnectionStatus(connection) {
     connectionStatus.className = 'status-dot disconnected';
     connectionText.textContent = 'Disconnected';
 
+    // Surface the reconnect banner on open too, not just on a live broadcast —
+    // a disconnect that happened while the popup was closed should still be
+    // visible the next time it's opened (icon badge is the only other signal).
+    if (connection.settings?.serverUrl) {
+      showSessionExpiredBanner('Disconnected from Canvas — tabs are not being synced.');
+    }
+
     // Create gray button indicator for unbound state when disconnected
     contextId.textContent = '';
     const unboundIndicator = createSecureElement('span', {

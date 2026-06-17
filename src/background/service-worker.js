@@ -457,9 +457,11 @@ async function handleAuthExpired() {
   if (alarmsAPI) {
     try { await alarmsAPI.clear(TOKEN_RENEW_ALARM); } catch { /* ignore */ }
   }
-  // Persistent signal even when the popup is closed.
+  // Persistent signal even when the popup is closed — the toolbar badge, not an
+  // OS notification, since this fires on every failed sync attempt while
+  // disconnected and would otherwise spam the user repeatedly.
   await setSessionBadge('expired');
-  broadcastToast('Session expired — reconnect in Settings', 'error', { osFallback: true });
+  broadcastToast('Session expired — reconnect in Settings', 'error');
   broadcastToPopup('auth.session.expired', {});
 }
 
