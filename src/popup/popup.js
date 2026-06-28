@@ -2024,6 +2024,13 @@ function layerIconHtml(node) {
   return `<iconify-icon class="folder-icon" icon="${escapeHtml(name)}"${colorStyle}></iconify-icon>`;
 }
 
+// Hidden tree nodes (name starts with '.', e.g. the internal `.incoming`
+// folder) are not surfaced in the UI. They still exist server-side and can be
+// addressed directly; we just never render them or their subtree.
+function isHiddenTreeNode(node) {
+  return typeof node?.name === 'string' && node.name.startsWith('.');
+}
+
 function renderTreeNode(node, parentPath, level) {
   // Build the correct path for this node
   const currentPath = level === 0 ? '/' : (parentPath === '/' ? `/${node.name}` : `${parentPath}/${node.name}`);
@@ -2052,6 +2059,7 @@ function renderTreeNode(node, parentPath, level) {
     }
 
     for (const child of node.children) {
+      if (isHiddenTreeNode(child)) continue;
       // FIXED: Pass the currentPath as parentPath for children (not building path again)
       const childPath = currentPath === '/' ? `/${child.name}` : `${currentPath}/${child.name}`;
       const childSelected = selectedPath === childPath;
@@ -4277,6 +4285,7 @@ function renderSyncToTreeNode(node, parentPath, level) {
     if (isRoot) html += '<div class="tree-children">';
 
     for (const child of node.children) {
+      if (isHiddenTreeNode(child)) continue;
       const childPath = currentPath === '/' ? `/${child.name}` : `${currentPath}/${child.name}`;
       const childChecked = syncToSelectedPaths.has(childPath);
       const childHasChildren = child.children && child.children.length > 0;
