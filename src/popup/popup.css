@@ -103,6 +103,35 @@ body.disconnected .main {
   pointer-events: none;
 }
 
+/* Exclamation badge overlaid on the logo while disconnected. */
+.logo-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.disconnected-badge {
+  display: none;
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  box-sizing: border-box;
+  border-radius: 7px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  border: 1px solid #7f1d1d;
+}
+
+body.disconnected .disconnected-badge {
+  display: block;
+}
+
 /* Header */
 .header {
   display: flex;
