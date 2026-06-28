@@ -13,6 +13,15 @@ export class AuthExpiredError extends Error {
 
 const DEFAULT_WORKSPACE_TREE_NAME = 'context';
 
+// Our tree ref is the tree *type* ('context' | 'directory'). Sending treeType
+// explicitly lets the server pick the right selector without name-detection
+// (older servers only branch on treeType, and a name-only path falls through to
+// the context tree → "Tree is not a context tree: directory").
+const WORKSPACE_TREE_TYPES = new Set(['context', 'directory']);
+function treeTypeFromRef(ref) {
+  return WORKSPACE_TREE_TYPES.has(ref) ? ref : undefined;
+}
+
 /**
  * Decode a JWT payload without verifying the signature.
  * Returns the parsed payload object, or null if the value is not a JWT
@@ -660,7 +669,10 @@ Firefox blocks local network requests for security reasons.
     let endpoint = `/workspaces/${encodeURIComponent(workspaceNameOrId)}/documents`;
 
     const params = new URLSearchParams();
-    params.set('treeNameOrTreeId', options.treeNameOrTreeId || DEFAULT_WORKSPACE_TREE_NAME);
+    const listTree = options.treeNameOrTreeId || DEFAULT_WORKSPACE_TREE_NAME;
+    params.set('treeNameOrTreeId', listTree);
+    const listTreeType = treeTypeFromRef(listTree);
+    if (listTreeType) params.set('treeType', listTreeType);
     if (contextSpec) params.set('context', contextSpec);
     if (enhancedFeatureArray.length > 0) {
       enhancedFeatureArray.forEach(feature => params.append('allOf', feature));
@@ -678,6 +690,7 @@ Firefox blocks local network requests for security reasons.
     await this.ensureWorkspaceStarted(workspaceNameOrId);
     const data = {
       treeNameOrTreeId: treeNameOrTreeId || DEFAULT_WORKSPACE_TREE_NAME,
+      treeType: treeTypeFromRef(treeNameOrTreeId || DEFAULT_WORKSPACE_TREE_NAME),
       context: contextSpec,
       features: featureArray,
       documents: [document]
@@ -689,6 +702,7 @@ Firefox blocks local network requests for security reasons.
     await this.ensureWorkspaceStarted(workspaceNameOrId);
     const data = {
       treeNameOrTreeId: treeNameOrTreeId || DEFAULT_WORKSPACE_TREE_NAME,
+      treeType: treeTypeFromRef(treeNameOrTreeId || DEFAULT_WORKSPACE_TREE_NAME),
       context: contextSpec,
       features: featureArray,
       documents
@@ -702,6 +716,7 @@ Firefox blocks local network requests for security reasons.
     const endpoint = `/workspaces/${encodeURIComponent(workspaceNameOrId)}/documents/remove`;
     const url = new URL(this.buildUrl(endpoint));
     url.searchParams.set('treeNameOrTreeId', treeNameOrTreeId || DEFAULT_WORKSPACE_TREE_NAME);
+    { const t = treeTypeFromRef(treeNameOrTreeId || DEFAULT_WORKSPACE_TREE_NAME); if (t) url.searchParams.set('treeType', t); }
     if (contextSpec) url.searchParams.set('context', contextSpec);
     if (Array.isArray(featureArray)) {
       for (const f of featureArray) url.searchParams.append('allOf', f);
@@ -716,6 +731,7 @@ Firefox blocks local network requests for security reasons.
     const endpoint = `/workspaces/${encodeURIComponent(workspaceNameOrId)}/documents`;
     const url = new URL(this.buildUrl(endpoint));
     url.searchParams.set('treeNameOrTreeId', treeNameOrTreeId || DEFAULT_WORKSPACE_TREE_NAME);
+    { const t = treeTypeFromRef(treeNameOrTreeId || DEFAULT_WORKSPACE_TREE_NAME); if (t) url.searchParams.set('treeType', t); }
     if (contextSpec) url.searchParams.set('context', contextSpec);
     if (Array.isArray(featureArray)) {
       for (const f of featureArray) url.searchParams.append('allOf', f);
