@@ -323,7 +323,7 @@ export class SyncEngine {
           : (eventData.document ? [eventData.document] : null);
         const response = eventDocuments
           ? { status: 'success', payload: eventDocuments }
-          : await apiClient.getWorkspaceDocuments(wsId, eventData.contextSpec || '/', ['data/abstraction/tab']);
+          : await apiClient.getWorkspaceDocuments(wsId, eventData.contextSpec || '/', ['data/abstraction/tab'], { treeNameOrTreeId: await browserStorage.getWorkspaceTreeRef() });
 
         if (response.status === 'success') {
           const documents = response.payload || [];
@@ -508,7 +508,7 @@ export class SyncEngine {
         if (browserIdentity) featureArray.push(`tag/${browserIdentity}`);
       }
 
-      const response = await apiClient.getWorkspaceDocuments(wsId, workspacePath || '/', featureArray);
+      const response = await apiClient.getWorkspaceDocuments(wsId, workspacePath || '/', featureArray, { treeNameOrTreeId: await browserStorage.getWorkspaceTreeRef() });
       if (response.status !== 'success') {
         console.log('SyncEngine: Failed to fetch current workspace documents for reconciliation:', response);
         return null;
@@ -548,6 +548,13 @@ export class SyncEngine {
         // For tree events, we get exact contextSpec, so we can do precise matching
         const pathMatch = workspacePath ? eventContextSpec === workspacePath : true;
 
+        // Check tree match. Server tree events carry treeName/treeId; we only act
+        // on events for the tree we currently sync against (e.g. 'directory').
+        // When the event omits tree info, fall through (treat as relevant).
+        const treeRef = await browserStorage.getWorkspaceTreeRef();
+        const eventTree = eventData.treeName || eventData.treeId;
+        const treeMatch = eventTree ? (eventData.treeName === treeRef || eventData.treeId === treeRef) : true;
+
         console.log('SyncEngine: Event relevance check:', {
           eventType: eventData.type,
           eventWorkspaceId,
@@ -558,10 +565,13 @@ export class SyncEngine {
           workspacePath,
           workspaceMatch,
           pathMatch,
-          relevant: workspaceMatch && pathMatch
+          treeRef,
+          eventTree,
+          treeMatch,
+          relevant: workspaceMatch && pathMatch && treeMatch
         });
 
-        return workspaceMatch && pathMatch;
+        return workspaceMatch && pathMatch && treeMatch;
       }
     } catch (error) {
       console.error('SyncEngine: Error checking event relevance:', error);
@@ -883,7 +893,7 @@ export class SyncEngine {
         featureArray.push(`tag/${browserIdentity}`);
       }
 
-      const response = await apiClient.getWorkspaceDocuments(wsId, workspacePath || '/', featureArray);
+      const response = await apiClient.getWorkspaceDocuments(wsId, workspacePath || '/', featureArray, { treeNameOrTreeId: await browserStorage.getWorkspaceTreeRef() });
       const canvasDocuments = (response.status === 'success') ? (response.payload || []) : [];
       const comparison = tabManager.compareWithCanvasDocuments(browserTabs, canvasDocuments, syncSettings);
 
@@ -898,7 +908,7 @@ export class SyncEngine {
       if (syncSettings.sendNewTabsToCanvas && comparison.browserToCanvas.length > 0) {
         const browserIdentity = await browserStorage.getBrowserIdentity();
         const documents = comparison.browserToCanvas.map(tab => tabManager.convertTabToDocument(tab, browserIdentity, syncSettings));
-        await apiClient.insertWorkspaceDocuments(wsId, documents, workspacePath || '/', documents[0]?.featureArray || []);
+        await apiClient.insertWorkspaceDocuments(wsId, documents, workspacePath || '/', documents[0]?.featureArray || [], await browserStorage.getWorkspaceTreeRef());
         reportSyncSuccess(comparison.browserToCanvas.length, workspacePath || '/');
       }
 
@@ -1186,7 +1196,7 @@ export class SyncEngine {
       const wsId = workspace?.name || workspace?.id;
       if (wsId) {
         const docs = browserTabs.map(tab => tabManager.convertTabToDocument(tab, browserIdentity, syncSettings));
-        await apiClient.insertWorkspaceDocuments(wsId, docs, workspacePath || '/', docs[0]?.featureArray || []);
+        await apiClient.insertWorkspaceDocuments(wsId, docs, workspacePath || '/', docs[0]?.featureArray || [], await browserStorage.getWorkspaceTreeRef());
       }
     }
   }
@@ -1277,7 +1287,7 @@ export class SyncEngine {
         console.log('SyncEngine: Fetching documents from workspace:', workspace.name || workspace.id, 'path:', workspacePath);
 
         const wsId = workspace.name || workspace.id;
-        const response = await apiClient.getWorkspaceDocuments(wsId, workspacePath || '/', ['data/abstraction/tab']);
+        const response = await apiClient.getWorkspaceDocuments(wsId, workspacePath || '/', ['data/abstraction/tab'], { treeNameOrTreeId: await browserStorage.getWorkspaceTreeRef() });
         documents = (response.status === 'success') ? (response.payload || []) : [];
         console.log('SyncEngine: API response for workspace documents:', {
           success: response.status === 'success',
