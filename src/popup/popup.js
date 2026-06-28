@@ -1536,16 +1536,20 @@ async function openCanvasWebUI() {
             targetUrl = `${serverUrl}/contexts/${currentConnection.context.id}`;
             console.log('Opening Canvas webui for context:', currentConnection.context.id);
           } else if (currentConnection.mode === 'explorer' && currentConnection.workspace) {
-            // Explorer mode: /workspaces/:ws/path/<path> (default tree shorthand)
+            // Explorer mode. URL forms (mirrors webui buildWorkspaceUrl):
+            //   /workspaces/:ws[/path/<path>]                 — default 'context' tree
+            //   /workspaces/:ws/trees/:tree[/path/<path>]     — named tree (e.g. directory)
             const workspaceName = getWorkspaceName(currentConnection.workspace);
             const contextPath = currentWorkspacePath && currentWorkspacePath !== '/' ? currentWorkspacePath : null;
+            const treeRef = currentConnection.treeRef;
+            const treeSeg = treeRef && treeRef !== 'context' ? `/trees/${treeRef}` : '';
 
             if (contextPath) {
-              targetUrl = `${serverUrl}/workspaces/${workspaceName}/path${contextPath}`;
-              console.log('Opening Canvas webui for workspace:', workspaceName, 'at path:', contextPath);
+              targetUrl = `${serverUrl}/workspaces/${workspaceName}${treeSeg}/path${contextPath}`;
+              console.log('Opening Canvas webui for workspace:', workspaceName, 'tree:', treeRef, 'at path:', contextPath);
             } else {
-              targetUrl = `${serverUrl}/workspaces/${workspaceName}`;
-              console.log('Opening Canvas webui for workspace:', workspaceName, 'at root');
+              targetUrl = `${serverUrl}/workspaces/${workspaceName}${treeSeg}`;
+              console.log('Opening Canvas webui for workspace:', workspaceName, 'tree:', treeRef, 'at root');
             }
           }
         }

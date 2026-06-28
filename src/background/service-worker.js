@@ -1030,6 +1030,9 @@ async function handleGetConnectionStatus(sendResponse) {
     const mode = await browserStorage.getSyncMode();
     const workspace = await browserStorage.getCurrentWorkspace();
     const workspacePath = await browserStorage.getWorkspacePath();
+    // Resolved tree type ('context' | 'directory') for the current workspace,
+    // so the popup can deep-link the webui to the matching tree.
+    const treeRef = await browserStorage.getWorkspaceTreeRef();
 
     console.log('Connection settings:', connectionSettings);
     console.log('Current context:', currentContext);
@@ -1043,7 +1046,8 @@ async function handleGetConnectionStatus(sendResponse) {
       user: userInfo,
       mode: mode || 'explorer',
       workspace,
-      workspacePath
+      workspacePath,
+      treeRef
     });
   } catch (error) {
     console.error('Failed to get connection status:', error);
