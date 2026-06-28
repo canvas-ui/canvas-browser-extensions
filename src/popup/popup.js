@@ -1988,6 +1988,7 @@ function renderTreeView() {
   setupTreeEventListeners();
 }
 
+
 // Per-layer visuals are stored in metadata.ui = { icon, color } (icon is an
 // Iconify name, e.g. "ph:monitor-fill"). Mirrors web UI src/lib/layer-style.ts.
 const DEFAULT_FOLDER_ICON = 'ph:folder-fill';

@@ -166,6 +166,25 @@
           </div>
         </div>
 
+        <!-- Workspace tree -->
+        <div class="card">
+          <div class="card-header">
+            <h2>Workspace tree</h2>
+            <p class="card-desc">Which tree the extension syncs against. Every workspace has a Context and a Directory tree.</p>
+          </div>
+          <div class="form-group">
+            <label for="preferredTreeType">Default tree</label>
+            <select id="preferredTreeType" class="input-field">
+              <option value="context">Context</option>
+              <option value="directory">Directory</option>
+            </select>
+          </div>
+          <div id="treeOverridesGroup" style="display: none;">
+            <p class="group-label">Per-workspace overrides</p>
+            <div id="treeOverridesList"></div>
+          </div>
+        </div>
+
         <!-- Sync behaviour -->
         <div class="card">
           <div class="card-header">

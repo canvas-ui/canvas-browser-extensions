@@ -82,8 +82,9 @@ export class CanvasApiClient {
     return ids;
   }
 
-  getWorkspaceTreeRoute(workspaceNameOrId) {
-    return `/workspaces/${encodeURIComponent(workspaceNameOrId)}/trees/${encodeURIComponent(DEFAULT_WORKSPACE_TREE_NAME)}`;
+  getWorkspaceTreeRoute(workspaceNameOrId, treeNameOrTreeId = DEFAULT_WORKSPACE_TREE_NAME) {
+    const tree = treeNameOrTreeId || DEFAULT_WORKSPACE_TREE_NAME;
+    return `/workspaces/${encodeURIComponent(workspaceNameOrId)}/trees/${encodeURIComponent(tree)}`;
   }
 
   async fetchDeleteWithJson(url, body) {
@@ -644,9 +645,9 @@ Firefox blocks local network requests for security reasons.
   }
 
   // Workspace tree
-  async getWorkspaceTree(workspaceNameOrId) {
+  async getWorkspaceTree(workspaceNameOrId, treeNameOrTreeId = DEFAULT_WORKSPACE_TREE_NAME) {
     await this.ensureWorkspaceStarted(workspaceNameOrId);
-    return await this.get(this.getWorkspaceTreeRoute(workspaceNameOrId));
+    return await this.get(this.getWorkspaceTreeRoute(workspaceNameOrId, treeNameOrTreeId));
   }
 
   async getWorkspaceDocuments(workspaceNameOrId, contextSpec = '/', featureArray = [], options = {}) {
@@ -659,7 +660,7 @@ Firefox blocks local network requests for security reasons.
     let endpoint = `/workspaces/${encodeURIComponent(workspaceNameOrId)}/documents`;
 
     const params = new URLSearchParams();
-    params.set('treeNameOrTreeId', DEFAULT_WORKSPACE_TREE_NAME);
+    params.set('treeNameOrTreeId', options.treeNameOrTreeId || DEFAULT_WORKSPACE_TREE_NAME);
     if (contextSpec) params.set('context', contextSpec);
     if (enhancedFeatureArray.length > 0) {
       enhancedFeatureArray.forEach(feature => params.append('allOf', feature));
@@ -673,10 +674,10 @@ Firefox blocks local network requests for security reasons.
     return await this.get(endpoint);
   }
 
-  async insertWorkspaceDocument(workspaceNameOrId, document, contextSpec = '/', featureArray = []) {
+  async insertWorkspaceDocument(workspaceNameOrId, document, contextSpec = '/', featureArray = [], treeNameOrTreeId = DEFAULT_WORKSPACE_TREE_NAME) {
     await this.ensureWorkspaceStarted(workspaceNameOrId);
     const data = {
-      treeNameOrTreeId: DEFAULT_WORKSPACE_TREE_NAME,
+      treeNameOrTreeId: treeNameOrTreeId || DEFAULT_WORKSPACE_TREE_NAME,
       context: contextSpec,
       features: featureArray,
       documents: [document]
@@ -684,10 +685,10 @@ Firefox blocks local network requests for security reasons.
     return await this.post(`/workspaces/${encodeURIComponent(workspaceNameOrId)}/documents`, data);
   }
 
-  async insertWorkspaceDocuments(workspaceNameOrId, documents, contextSpec = '/', featureArray = []) {
+  async insertWorkspaceDocuments(workspaceNameOrId, documents, contextSpec = '/', featureArray = [], treeNameOrTreeId = DEFAULT_WORKSPACE_TREE_NAME) {
     await this.ensureWorkspaceStarted(workspaceNameOrId);
     const data = {
-      treeNameOrTreeId: DEFAULT_WORKSPACE_TREE_NAME,
+      treeNameOrTreeId: treeNameOrTreeId || DEFAULT_WORKSPACE_TREE_NAME,
       context: contextSpec,
       features: featureArray,
       documents
@@ -695,12 +696,12 @@ Firefox blocks local network requests for security reasons.
     return await this.post(`/workspaces/${encodeURIComponent(workspaceNameOrId)}/documents`, data);
   }
 
-  async removeWorkspaceDocuments(workspaceNameOrId, documentIds, contextSpec = '/', featureArray = []) {
+  async removeWorkspaceDocuments(workspaceNameOrId, documentIds, contextSpec = '/', featureArray = [], treeNameOrTreeId = DEFAULT_WORKSPACE_TREE_NAME) {
     await this.ensureWorkspaceStarted(workspaceNameOrId);
     // DELETE /workspaces/:id/documents/remove with body and query
     const endpoint = `/workspaces/${encodeURIComponent(workspaceNameOrId)}/documents/remove`;
     const url = new URL(this.buildUrl(endpoint));
-    url.searchParams.set('treeNameOrTreeId', DEFAULT_WORKSPACE_TREE_NAME);
+    url.searchParams.set('treeNameOrTreeId', treeNameOrTreeId || DEFAULT_WORKSPACE_TREE_NAME);
     if (contextSpec) url.searchParams.set('context', contextSpec);
     if (Array.isArray(featureArray)) {
       for (const f of featureArray) url.searchParams.append('allOf', f);
@@ -709,12 +710,12 @@ Firefox blocks local network requests for security reasons.
     return await this.fetchDeleteWithJson(url.toString(), ids);
   }
 
-  async deleteWorkspaceDocuments(workspaceNameOrId, documentIds, contextSpec = '/', featureArray = []) {
+  async deleteWorkspaceDocuments(workspaceNameOrId, documentIds, contextSpec = '/', featureArray = [], treeNameOrTreeId = DEFAULT_WORKSPACE_TREE_NAME) {
     await this.ensureWorkspaceStarted(workspaceNameOrId);
     // DELETE /workspaces/:id/documents with body and query
     const endpoint = `/workspaces/${encodeURIComponent(workspaceNameOrId)}/documents`;
     const url = new URL(this.buildUrl(endpoint));
-    url.searchParams.set('treeNameOrTreeId', DEFAULT_WORKSPACE_TREE_NAME);
+    url.searchParams.set('treeNameOrTreeId', treeNameOrTreeId || DEFAULT_WORKSPACE_TREE_NAME);
     if (contextSpec) url.searchParams.set('context', contextSpec);
     if (Array.isArray(featureArray)) {
       for (const f of featureArray) url.searchParams.append('allOf', f);
@@ -726,12 +727,12 @@ Firefox blocks local network requests for security reasons.
   // Workspace tree operations.
   // Insert is PUT .../trees/{tree}/path/{encodedPath} — the path is the URL splat
   // (not a body field), matching the web UI and the `PUT /path/*` route.
-  async insertWorkspacePath(workspaceNameOrId, path, data = null, autoCreateLayers = true) {
+  async insertWorkspacePath(workspaceNameOrId, path, data = null, autoCreateLayers = true, treeNameOrTreeId = DEFAULT_WORKSPACE_TREE_NAME) {
     await this.ensureWorkspaceStarted(workspaceNameOrId);
     const encodedPath = String(path || '/').split('/').filter(Boolean).map(encodeURIComponent).join('/');
     const body = { autoCreateLayers };
     if (data && typeof data === 'object') Object.assign(body, data);
-    return await this.put(`${this.getWorkspaceTreeRoute(workspaceNameOrId)}/path/${encodedPath}`, body);
+    return await this.put(`${this.getWorkspaceTreeRoute(workspaceNameOrId, treeNameOrTreeId)}/path/${encodedPath}`, body);
   }
 
   // Context tree operations

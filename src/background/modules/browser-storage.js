@@ -53,7 +53,9 @@ export class BrowserStorage {
         firefoxHideStashedTabs: true,        // Firefox-only: hide stashed tabs from the tab strip
         chromiumStashGroupName: 'Stashed',
         canvasTabsFetchLimit: 200,
-        contextChangeBehavior: 'keep-only'  // How to handle context changes: 'close-open-new', 'save-close-open-new', 'keep-open-new', 'keep-only'
+        contextChangeBehavior: 'keep-only', // How to handle context changes: 'close-open-new', 'save-close-open-new', 'keep-open-new', 'keep-only'
+        preferredTreeType: 'context',       // Default workspace tree to sync against: 'context' | 'directory'
+        workspaceTreeOverrides: {}           // Per-workspace override: { [workspaceId|name]: 'context' | 'directory' }
       },
       [this.KEYS.CURRENT_CONTEXT]: null,
       [this.KEYS.CURRENT_WORKSPACE]: null, // { id, name, label, path }
@@ -190,6 +192,29 @@ export class BrowserStorage {
 
   async setWorkspacePath(path) {
     return await this.set(this.KEYS.WORKSPACE_PATH, path || '/');
+  }
+
+  // Resolve which tree to sync against for a workspace. Driven entirely by
+  // settings (no per-session UI): a global preferredTreeType plus an optional
+  // per-workspace override map. Returns a tree *type name* ('context' |
+  // 'directory') which the API accepts as treeNameOrTreeId. Every workspace has
+  // both default trees, so resolving by type name needs no tree-id lookup.
+  async getWorkspaceTreeRef(workspaceNameOrId = null) {
+    const sync = await this.getSyncSettings();
+    const overrides = (sync && sync.workspaceTreeOverrides) || {};
+
+    let wsKey = workspaceNameOrId;
+    if (!wsKey) {
+      const ws = await this.getCurrentWorkspace();
+      wsKey = ws?.id || ws?.name;
+      // Try both id and name when resolving the override
+      const override = (ws && (overrides[ws.id] || overrides[ws.name])) || null;
+      if (override) return override;
+    } else if (overrides[wsKey]) {
+      return overrides[wsKey];
+    }
+
+    return (sync && sync.preferredTreeType) || 'context';
   }
 
   // Sync Settings

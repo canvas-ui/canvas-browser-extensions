@@ -395,6 +395,35 @@ code {
   box-shadow: 0 0 0 3px rgba(10, 10, 10, 0.15);
 }
 
+/* ---- Per-workspace tree overrides ---- */
+.tree-override-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f4f4f5;
+}
+
+.tree-override-row:last-child {
+  border-bottom: none;
+}
+
+.tree-override-name {
+  font-size: 14px;
+  color: #0a0a0a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-override-row select {
+  width: auto;
+  min-width: 130px;
+  padding: 7px 32px 7px 12px;
+  flex-shrink: 0;
+}
+
 /* ---- Form actions ---- */
 .form-actions {
   display: flex;

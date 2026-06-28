@@ -617,7 +617,7 @@ tabsAPI.onUpdated.addListener(async (tabId, changeInfo, tab) => {
           // Workspace mode: insert document into workspace with contextSpec
           const document = tabManager.convertTabToDocument(tab, browserIdentity, syncSettings);
           const wsId = currentWorkspace.name || currentWorkspace.id;
-          const response = await apiClient.insertWorkspaceDocument(wsId, document, workspacePath || '/', document.featureArray);
+          const response = await apiClient.insertWorkspaceDocument(wsId, document, workspacePath || '/', document.featureArray, await browserStorage.getWorkspaceTreeRef());
           if (response.status === 'success') {
             const docId = Array.isArray(response.payload) ? response.payload[0] : response.payload;
             tabManager.markTabAsSynced(tab.id, docId, document.data?.url);
@@ -700,7 +700,7 @@ tabsAPI.onRemoved.addListener(async (tabId, removeInfo) => {
       if (!workspace?.id && !workspace?.name) return;
       const wsId = workspace.name || workspace.id;
       const workspacePath = await browserStorage.getWorkspacePath();
-      await apiClient.removeWorkspaceDocuments(wsId, [documentId], workspacePath || '/', ['data/abstraction/tab']);
+      await apiClient.removeWorkspaceDocuments(wsId, [documentId], workspacePath || '/', ['data/abstraction/tab'], await browserStorage.getWorkspaceTreeRef());
     }
   } catch (error) {
     // Non-fatal: we always prefer closing the browser tab over perfect remote state.
@@ -816,6 +816,7 @@ runtimeAPI.onMessage.addListener((message, sender, sendResponse) => {
     // Get workspace tree
     run(handleGetWorkspaceTree(message.data, respond));
     return true;
+
 
   case 'INSERT_WORKSPACE_PATH':
     // Insert path in workspace tree
@@ -1455,7 +1456,9 @@ async function handleGetWorkspaceTree(data, sendResponse) {
       );
     }
 
-    const response = await apiClient.getWorkspaceTree(wsIdOrName);
+    // Honor the selected tree (caller may override via data.treeNameOrTreeId)
+    const treeRef = data?.treeNameOrTreeId || await browserStorage.getWorkspaceTreeRef();
+    const response = await apiClient.getWorkspaceTree(wsIdOrName, treeRef);
     if (response.status === 'success') {
       sendResponse({ success: true, tree: response.payload });
     } else {
@@ -1466,6 +1469,7 @@ async function handleGetWorkspaceTree(data, sendResponse) {
     sendResponse({ success: false, error: error.message, tree: null });
   }
 }
+
 
 async function handleInsertWorkspacePath(data, sendResponse) {
   try {
@@ -1491,7 +1495,8 @@ async function handleInsertWorkspacePath(data, sendResponse) {
       );
     }
 
-    const response = await apiClient.insertWorkspacePath(wsIdOrName, path, nodeData, autoCreateLayers);
+    const treeRef = data?.treeNameOrTreeId || await browserStorage.getWorkspaceTreeRef();
+    const response = await apiClient.insertWorkspacePath(wsIdOrName, path, nodeData, autoCreateLayers, treeRef);
     if (response.status === 'success') {
       // Note: deliberately NOT rebuilding native context menus here — that
       // refetches every workspace+tree (was firing "Workspaces retrieved" ~23×
@@ -1976,7 +1981,7 @@ async function handleDeleteFromDatabase(data, sendResponse) {
       console.log('Deleting document from workspace:', wsId, 'path:', contextSpec, 'documentId:', document.id);
 
       // Delete from workspace/database
-      const response = await apiClient.deleteWorkspaceDocuments(wsId, [document.id], contextSpec, ['data/abstraction/tab']);
+      const response = await apiClient.deleteWorkspaceDocuments(wsId, [document.id], contextSpec, ['data/abstraction/tab'], await browserStorage.getWorkspaceTreeRef());
       result = { success: response.status === 'success', response };
     }
 
@@ -2271,7 +2276,7 @@ async function handleGetWorkspaceDocuments(data, sendResponse) {
     const offset = normalizeCanvasFetchOffset(requestData.offset);
 
     // Fetch documents for workspace path
-    const response = await apiClient.getWorkspaceDocuments(wsIdOrName, contextSpec, ['data/abstraction/tab'], { limit, offset });
+    const response = await apiClient.getWorkspaceDocuments(wsIdOrName, contextSpec, ['data/abstraction/tab'], { limit, offset, treeNameOrTreeId: await browserStorage.getWorkspaceTreeRef() });
 
     if (response.status === 'success') {
       sendResponse({
@@ -2353,7 +2358,7 @@ async function handleSyncTab(data, sendResponse) {
       const wsId = currentWorkspace?.name || currentWorkspace?.id;
       if (!wsId) throw new Error('No workspace selected');
       const document = tabManager.convertTabToDocument(tab, browserIdentity, syncSettings);
-      const resp = await apiClient.insertWorkspaceDocument(wsId, document, contextSpec || workspacePath || '/', document.featureArray);
+      const resp = await apiClient.insertWorkspaceDocument(wsId, document, contextSpec || workspacePath || '/', document.featureArray, await browserStorage.getWorkspaceTreeRef());
       if (resp.status === 'success') {
         const docId = Array.isArray(resp.payload) ? resp.payload[0] : resp.payload;
         tabManager.markTabAsSynced(tab.id, docId, document.data?.url);
@@ -2457,7 +2462,7 @@ async function handleSyncMultipleTabs(data, sendResponse) {
       if (!wsId) throw new Error('No workspace selected');
       console.log(`🔧 Syncing multiple tabs to workspace ${wsId} at path ${contextSpec || workspacePath || '/'}...`);
       const docs = tabs.map(tab => tabManager.convertTabToDocument(tab, browserIdentity, syncSettings));
-      const resp = await apiClient.insertWorkspaceDocuments(wsId, docs, contextSpec || workspacePath || '/', docs[0]?.featureArray || []);
+      const resp = await apiClient.insertWorkspaceDocuments(wsId, docs, contextSpec || workspacePath || '/', docs[0]?.featureArray || [], await browserStorage.getWorkspaceTreeRef());
       if (resp.status === 'success') {
         const documentIds = Array.isArray(resp.payload) ? resp.payload : [resp.payload];
         tabs.forEach((tab, index) => {
@@ -2580,8 +2585,8 @@ async function handleRemoveCanvasDocument(data, sendResponse) {
 
       // Remove or delete from workspace based on closeTab flag
       const response = closeTab
-        ? await apiClient.deleteWorkspaceDocuments(wsId, [document.id], contextSpec, ['data/abstraction/tab'])
-        : await apiClient.removeWorkspaceDocuments(wsId, [document.id], contextSpec, ['data/abstraction/tab']);
+        ? await apiClient.deleteWorkspaceDocuments(wsId, [document.id], contextSpec, ['data/abstraction/tab'], await browserStorage.getWorkspaceTreeRef())
+        : await apiClient.removeWorkspaceDocuments(wsId, [document.id], contextSpec, ['data/abstraction/tab'], await browserStorage.getWorkspaceTreeRef());
       result = { success: response.status === 'success', response };
     }
 
@@ -2638,8 +2643,8 @@ async function handleRemoveCanvasDocuments(data, sendResponse) {
       if (!wsId) throw new Error('No workspace selected');
       const contextSpec = workspacePath || '/';
       response = closeTab
-        ? await apiClient.deleteWorkspaceDocuments(wsId, documentIds, contextSpec, ['data/abstraction/tab'])
-        : await apiClient.removeWorkspaceDocuments(wsId, documentIds, contextSpec, ['data/abstraction/tab']);
+        ? await apiClient.deleteWorkspaceDocuments(wsId, documentIds, contextSpec, ['data/abstraction/tab'], await browserStorage.getWorkspaceTreeRef())
+        : await apiClient.removeWorkspaceDocuments(wsId, documentIds, contextSpec, ['data/abstraction/tab'], await browserStorage.getWorkspaceTreeRef());
     }
 
     const success = response.status === 'success';
@@ -3161,8 +3166,8 @@ if (contextMenusAPI && contextMenusAPI.onClicked) {
 
             const documents = selectedTabs.map(t => tabManager.convertTabToDocument(t, browserIdentity, syncSettings));
             const response = documents.length > 1
-              ? await apiClient.insertWorkspaceDocuments(workspaceName, documents, contextSpec || '/', documents[0].featureArray)
-              : await apiClient.insertWorkspaceDocument(workspaceName, documents[0], contextSpec || '/', documents[0].featureArray);
+              ? await apiClient.insertWorkspaceDocuments(workspaceName, documents, contextSpec || '/', documents[0].featureArray, await browserStorage.getWorkspaceTreeRef())
+              : await apiClient.insertWorkspaceDocument(workspaceName, documents[0], contextSpec || '/', documents[0].featureArray, await browserStorage.getWorkspaceTreeRef());
 
             if (response.status === 'success') {
               const documentIds = Array.isArray(response.payload) ? response.payload : [response.payload];
@@ -3251,8 +3256,8 @@ if (contextMenusAPI && contextMenusAPI.onClicked) {
 
             const documents = selectedTabs.map(t => tabManager.convertTabToDocument(t, browserIdentity, syncSettings));
             const response = documents.length > 1
-              ? await apiClient.insertWorkspaceDocuments(workspaceName, documents, contextSpec || '/', documents[0].featureArray)
-              : await apiClient.insertWorkspaceDocument(workspaceName, documents[0], contextSpec || '/', documents[0].featureArray);
+              ? await apiClient.insertWorkspaceDocuments(workspaceName, documents, contextSpec || '/', documents[0].featureArray, await browserStorage.getWorkspaceTreeRef())
+              : await apiClient.insertWorkspaceDocument(workspaceName, documents[0], contextSpec || '/', documents[0].featureArray, await browserStorage.getWorkspaceTreeRef());
 
             if (response.status === 'success') {
               const documentIds = Array.isArray(response.payload) ? response.payload : [response.payload];
@@ -3305,8 +3310,8 @@ if (contextMenusAPI && contextMenusAPI.onClicked) {
 
             const documents = selectedTabs.map(t => tabManager.convertTabToDocument(t, browserIdentity, syncSettings));
             const response = documents.length > 1
-              ? await apiClient.insertWorkspaceDocuments(workspaceName, documents, contextSpec || '/', documents[0].featureArray)
-              : await apiClient.insertWorkspaceDocument(workspaceName, documents[0], contextSpec || '/', documents[0].featureArray);
+              ? await apiClient.insertWorkspaceDocuments(workspaceName, documents, contextSpec || '/', documents[0].featureArray, await browserStorage.getWorkspaceTreeRef())
+              : await apiClient.insertWorkspaceDocument(workspaceName, documents[0], contextSpec || '/', documents[0].featureArray, await browserStorage.getWorkspaceTreeRef());
 
             if (response.status === 'success') {
               const documentIds = Array.isArray(response.payload) ? response.payload : [response.payload];

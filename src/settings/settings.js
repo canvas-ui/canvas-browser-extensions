@@ -14,6 +14,7 @@ let currentContext, boundContextId, boundContextUrl;
 let openTabsAddedToCanvas, closeTabsRemovedFromCanvas, sendNewTabsToCanvas, removeClosedTabsFromCanvas;
 let removeUtmParameters;
 let contextUnloadBehavior, stashOptions, stashDiscardTabs, firefoxHideStashedTabs, chromiumStashGroupName, canvasTabsFetchLimit;
+let preferredTreeType, treeOverridesGroup, treeOverridesList;
 let syncOnlyCurrentBrowser, syncOnlyTaggedTabs, syncTagFilter;
 let resetSettingsBtn;
 let refreshTabSyncDebugBtn, copyTabSyncDebugBtn, tabSyncDebugSummary, tabSyncDebugOutput;
@@ -29,6 +30,7 @@ let availableContexts = [];
 let availableWorkspaces = [];
 let settings = {};
 let currentMode = 'explorer';
+let treeOverrides = {}; // { [workspaceId]: 'context' | 'directory' }
 let lastTabSyncDebug = null;
 
 // Initialize settings page
@@ -106,6 +108,9 @@ function initializeElements() {
   firefoxHideStashedTabs = document.getElementById('firefoxHideStashedTabs');
   chromiumStashGroupName = document.getElementById('chromiumStashGroupName');
   canvasTabsFetchLimit = document.getElementById('canvasTabsFetchLimit');
+  preferredTreeType = document.getElementById('preferredTreeType');
+  treeOverridesGroup = document.getElementById('treeOverridesGroup');
+  treeOverridesList = document.getElementById('treeOverridesList');
 
   // Sync filtering options
   syncOnlyCurrentBrowser = document.getElementById('syncOnlyCurrentBrowser');
@@ -180,7 +185,8 @@ function setupEventListeners() {
   const syncControls = [
     openTabsAddedToCanvas, closeTabsRemovedFromCanvas, sendNewTabsToCanvas,
     removeClosedTabsFromCanvas, removeUtmParameters, contextUnloadBehavior,
-    stashDiscardTabs, firefoxHideStashedTabs, syncOnlyCurrentBrowser, syncOnlyTaggedTabs
+    stashDiscardTabs, firefoxHideStashedTabs, syncOnlyCurrentBrowser, syncOnlyTaggedTabs,
+    preferredTreeType
   ];
   syncControls.forEach((el) => el?.addEventListener('change', scheduleAutoSave));
 
@@ -211,7 +217,9 @@ function collectSyncSettings() {
     canvasTabsFetchLimit: normalizeCanvasTabsFetchLimit(canvasTabsFetchLimit.value),
     syncOnlyCurrentBrowser: syncOnlyCurrentBrowser.checked,
     syncOnlyTaggedTabs: syncOnlyTaggedTabs.checked,
-    syncTagFilter: syncTagFilter.value.trim()
+    syncTagFilter: syncTagFilter.value.trim(),
+    preferredTreeType: preferredTreeType.value || 'context',
+    workspaceTreeOverrides: { ...treeOverrides }
   };
 }
 
@@ -296,7 +304,9 @@ async function loadSettings() {
         canvasTabsFetchLimit: savedSyncSettings.canvasTabsFetchLimit || 200,
         syncOnlyCurrentBrowser: savedSyncSettings.syncOnlyCurrentBrowser || false,
         syncOnlyTaggedTabs: savedSyncSettings.syncOnlyTaggedTabs || false,
-        syncTagFilter: savedSyncSettings.syncTagFilter || ''
+        syncTagFilter: savedSyncSettings.syncTagFilter || '',
+        preferredTreeType: savedSyncSettings.preferredTreeType || 'context',
+        workspaceTreeOverrides: savedSyncSettings.workspaceTreeOverrides || {}
       },
       browserIdentity: response.browserIdentity || getDefaultBrowserIdentity(),
       currentContext: (modeSelResponse.success ? modeSelResponse.context : null) || (response.context || null),
@@ -385,6 +395,11 @@ function populateForm() {
   syncOnlyTaggedTabs.checked = settings.syncSettings.syncOnlyTaggedTabs;
   syncTagFilter.value = settings.syncSettings.syncTagFilter;
   syncTagFilter.disabled = !settings.syncSettings.syncOnlyTaggedTabs;
+
+  // Workspace tree preference
+  if (preferredTreeType) preferredTreeType.value = settings.syncSettings.preferredTreeType || 'context';
+  treeOverrides = { ...(settings.syncSettings.workspaceTreeOverrides || {}) };
+  renderTreeOverrides();
 
   // Update connection status
   updateConnectionStatus(settings.connectionSettings.connected);
@@ -699,6 +714,53 @@ async function loadWorkspaces() {
   }
 }
 
+// Render one row per workspace with a tree override select (Default / Context /
+// Directory). The overrides map is keyed by workspace id. "Default" removes the
+// override so the global preferredTreeType applies.
+function renderTreeOverrides() {
+  if (!treeOverridesList || !treeOverridesGroup) return;
+
+  if (!availableWorkspaces || availableWorkspaces.length === 0) {
+    treeOverridesGroup.style.display = 'none';
+    treeOverridesList.textContent = '';
+    return;
+  }
+
+  treeOverridesGroup.style.display = 'block';
+  treeOverridesList.textContent = '';
+
+  availableWorkspaces.forEach((ws) => {
+    const row = document.createElement('div');
+    row.className = 'tree-override-row';
+
+    const name = document.createElement('span');
+    name.className = 'tree-override-name';
+    name.textContent = ws.label || ws.name || ws.id;
+    row.appendChild(name);
+
+    const select = document.createElement('select');
+    select.className = 'input-field';
+    [['', 'Default'], ['context', 'Context'], ['directory', 'Directory']].forEach(([value, label]) => {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      select.appendChild(opt);
+    });
+    select.value = treeOverrides[ws.id] || '';
+    select.addEventListener('change', () => {
+      if (select.value) {
+        treeOverrides[ws.id] = select.value;
+      } else {
+        delete treeOverrides[ws.id];
+      }
+      scheduleAutoSave();
+    });
+    row.appendChild(select);
+
+    treeOverridesList.appendChild(row);
+  });
+}
+
 function populateWorkspaceSelect() {
   // Clear existing options securely
   workspaceSelect.textContent = '';
@@ -729,6 +791,9 @@ function populateWorkspaceSelect() {
       console.log('Auto-selected universe workspace:', universeWorkspace.id);
     }
   }
+
+  // Keep the per-workspace tree override rows in sync with the workspace list
+  renderTreeOverrides();
 }
 
 function getUniverseWorkspace() {
