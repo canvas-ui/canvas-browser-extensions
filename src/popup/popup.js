@@ -4215,16 +4215,12 @@ async function runSyncTo(paths, tabIds, { closeAfter } = {}) {
   closeSyncToPanel();
 
   try {
-    const failures = [];
-    for (const path of paths) {
-      const response = await sendMessageToBackground('SYNC_MULTIPLE_TABS', { tabIds, contextSpec: path });
-      if (!response.success) {
-        console.error(`Failed to sync to path ${path}:`, response.error);
-        failures.push({ path, error: response.error });
-      }
-    }
-    if (failures.length > 0) {
-      showSyncResultToast({ success: false, error: failures[0].error || 'Unknown error' });
+    // One call, all paths: the server inserts each doc once (one embed) and ticks
+    // every path's membership in a single putMany. Avoids the per-path insert loop
+    // (which re-embedded + could blow the request timeout on later paths).
+    const response = await sendMessageToBackground('SYNC_MULTIPLE_TABS', { tabIds, contextSpec: paths });
+    if (!response.success) {
+      showSyncResultToast({ success: false, error: response.error || 'Unknown error' });
     } else {
       const pathSuffix = paths.length === 1 ? ` to ${paths[0]}` : ` to ${paths.length} paths`;
       showToast(
