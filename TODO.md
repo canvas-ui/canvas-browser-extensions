@@ -1,8 +1,5 @@
 # TODO
 
-## Generic
-- Inserting tabs to a path regardless of how should show up in the history in our context menu, currently this only happens if documents are inserted using the context menu (or maybe context menus are not getting refreshed properly)
-
 ## Backend features
 
 - Add support for multiple trees
