@@ -63,7 +63,7 @@ let selectionBackBtn, contextsSelectionTab, workspacesSelectionTab;
 let contextsList, workspacesList;
 
 // Sync To panel elements
-let syncToOverlay, syncToTree, syncToPanelClose, syncToCount, syncToSearchInput, syncToSearchClear, syncToPinned, syncToConfirmBtn;
+let syncToOverlay, syncToTree, syncToPanelClose, syncToCount, syncToSearchInput, syncToSearchClear, syncToPinned, syncToConfirmBtn, syncToConfirmCloseBtn, syncToCurrentBtn, syncToCurrentCloseBtn;
 
 // Floating "New Folder" context menu element (shared by both trees)
 let treeCtxMenuEl = null;
@@ -83,6 +83,7 @@ let canvasPagination = { offset: 0, limit: 200, count: 0, totalCount: 0 };
 const selectedBrowserTabs = new Set();
 const selectedCanvasTabs = new Set();
 let currentTab = 'browser-to-canvas';
+let currentWindowId = null; // Focused browser window — its tabs sort first + highlight
 
 let treeData = null; // Store tree data from API
 let selectedPath = '/'; // Currently selected tree path
@@ -124,6 +125,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
   await loadInitialData();
   startSessionInfoPolling();
+  // Auto-focus search so the user can start typing the moment the popup opens.
+  searchInput?.focus();
 });
 
 function isPopupView() {
@@ -357,6 +360,9 @@ function initializeElements() {
   syncToSearchClear = document.getElementById('syncToSearchClear');
   syncToPinned = document.getElementById('syncToPinned');
   syncToConfirmBtn = document.getElementById('syncToConfirmBtn');
+  syncToConfirmCloseBtn = document.getElementById('syncToConfirmCloseBtn');
+  syncToCurrentBtn = document.getElementById('syncToCurrentBtn');
+  syncToCurrentCloseBtn = document.getElementById('syncToCurrentCloseBtn');
 
   // Ad-hoc "send current page" button (header)
   addPageBtn = document.getElementById('addPageBtn');
@@ -426,6 +432,9 @@ function setupEventListeners() {
   // Sync To panel
   syncToPanelClose.addEventListener('click', () => closeSyncToPanel());
   syncToConfirmBtn.addEventListener('click', () => handleSyncToConfirm());
+  syncToConfirmCloseBtn?.addEventListener('click', () => handleSyncToConfirmAndClose());
+  syncToCurrentBtn?.addEventListener('click', () => handleSyncToCurrentPath());
+  syncToCurrentCloseBtn?.addEventListener('click', () => handleSyncToCurrentPathAndClose());
   syncToSearchInput.addEventListener('input', () => {
     const query = syncToSearchInput.value.trim();
     syncToSearchClear.style.display = query ? 'inline-flex' : 'none';
@@ -586,6 +595,10 @@ async function loadInitialData() {
 function updateConnectionStatus(connection) {
   console.log('Popup: Updating connection status with:', connection);
 
+  // Disconnected state is conveyed by a red, greyed-out header (see CSS), not a
+  // banner — a banner prepended into the flex view-container flashed as a column.
+  document.body.classList.toggle('disconnected', !connection.connected);
+
   if (connection.connected) {
     console.log('Popup: Setting status to CONNECTED');
     connectionStatus.className = 'status-dot connected';
@@ -676,13 +689,6 @@ function updateConnectionStatus(connection) {
     connectionStatus.className = 'status-dot disconnected';
     connectionText.textContent = 'Disconnected';
 
-    // Surface the reconnect banner on open too, not just on a live broadcast —
-    // a disconnect that happened while the popup was closed should still be
-    // visible the next time it's opened (icon badge is the only other signal).
-    if (connection.settings?.serverUrl) {
-      showSessionExpiredBanner('Disconnected from Canvas — tabs are not being synced.');
-    }
-
     // Create gray button indicator for unbound state when disconnected
     contextId.textContent = '';
     const unboundIndicator = createSecureElement('span', {
@@ -757,6 +763,7 @@ async function loadTabs() {
       sendMessageToBackground('GET_ALL_TABS'),
       fetchCurrentDocumentList()
     ]);
+    await resolveCurrentWindowId();
     applyCanvasDocumentResponse(docsResponse);
 
     if (allTabsResponse.success) {
@@ -810,6 +817,23 @@ async function loadTabs() {
     const requestCount = popupRequestStats.count - requestCountBefore;
     console.info(`Popup Timing: loadTabs ${durationMs}ms (${requestCount} background request${requestCount === 1 ? '' : 's'})`);
   }
+}
+
+// Resolve the browser window the user is actually on. Every window has its own
+// active tab, so tab.active can't single one out — use the active tab of the
+// current window, falling back to the last-focused window.
+async function resolveCurrentWindowId() {
+  try {
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (activeTab?.windowId != null) {
+      currentWindowId = activeTab.windowId;
+      return;
+    }
+  } catch { /* fall through */ }
+  try {
+    const win = await chrome.windows.getLastFocused();
+    if (win?.id != null) currentWindowId = win.id;
+  } catch { /* leave null */ }
 }
 
 async function fetchCurrentDocumentList() {
@@ -1132,9 +1156,9 @@ function renderBrowserTabs() {
 
   const groups = groupBrowserTabsByWindow(browserTabs);
   groups.sort((a, b) => {
-    const aActive = a.tabs.some(t => t.active);
-    const bActive = b.tabs.some(t => t.active);
-    if (aActive !== bActive) return aActive ? -1 : 1;
+    const aCurrent = a.windowId === currentWindowId;
+    const bCurrent = b.windowId === currentWindowId;
+    if (aCurrent !== bCurrent) return aCurrent ? -1 : 1;
     return a.windowId - b.windowId;
   });
 
@@ -1142,10 +1166,10 @@ function renderBrowserTabs() {
     const { windowId } = group;
     const windowUnsyncedIds = getUnsyncedTabIdsForWindow(windowId);
     const canSync = currentConnection.connected && windowUnsyncedIds.length > 0;
-    const isActiveWindow = group.tabs.some(t => t.active);
+    const isActiveWindow = windowId === currentWindowId;
 
     const groupElement = createSecureElement('div', {
-      className: 'window-group',
+      className: isActiveWindow ? 'window-group current' : 'window-group',
       'data-window-id': windowId
     });
 
@@ -2258,24 +2282,36 @@ function filterTreeContainer(container, query) {
     }
   });
 
-  // Build visible set: matching nodes + all ancestor paths
-  const visiblePaths = new Set(matchingPaths);
-  visiblePaths.add('/');
+  // Strict ancestors of matches — must be visible AND expanded to reveal matches.
+  const ancestorPaths = new Set();
   matchingPaths.forEach(path => {
     const parts = path.split('/').filter(Boolean);
     let ancestor = '';
-    for (const part of parts) {
-      ancestor = ancestor ? `${ancestor}/${part}` : `/${part}`;
-      visiblePaths.add(ancestor);
+    for (let i = 0; i < parts.length - 1; i++) {
+      ancestor = ancestor ? `${ancestor}/${parts[i]}` : `/${parts[i]}`;
+      ancestorPaths.add(ancestor);
     }
   });
+
+  // A node is visible if it matches, is an ancestor of a match, is root, or is a
+  // descendant of a match. Descendants stay collapsed (see expand step below) but
+  // remain openable: you can recall a category ("ml") yet drill in to find the
+  // forgotten subcategory ("ml/papers").
+  const isDescendantOfMatch = (path) => {
+    for (const m of matchingPaths) {
+      if (path.startsWith(`${m}/`)) return true;
+    }
+    return false;
+  };
 
   // Apply visibility and highlight matching labels
   allNodes.forEach(node => {
     const path = node.dataset.path;
     const label = node.querySelector('.node-label');
+    const visible = path === '/' || matchingPaths.has(path) ||
+      ancestorPaths.has(path) || isDescendantOfMatch(path);
 
-    if (!visiblePaths.has(path)) {
+    if (!visible) {
       node.classList.add('hidden-by-search');
       return;
     }
@@ -2301,16 +2337,19 @@ function filterTreeContainer(container, query) {
     }
   });
 
-  // Expand collapsed tree-children containers that contain visible nodes
+  // Expand only the path down to the matches; leave matched subtrees collapsed so
+  // the user opens them on demand (their descendants are visible-but-collapsed).
+  const expandablePaths = new Set(ancestorPaths);
+  expandablePaths.add('/');
   container.querySelectorAll('.tree-children').forEach(tc => {
-    if (tc.style.display === 'none' && tc.querySelector('.tree-node:not(.hidden-by-search)')) {
+    if (tc.style.display !== 'none') return;
+    const prevNode = tc.previousElementSibling;
+    const prevPath = (prevNode && prevNode.classList.contains('tree-node')) ? prevNode.dataset.path : null;
+    if (prevPath && expandablePaths.has(prevPath)) {
       tc.style.display = 'block';
       tc.setAttribute('data-search-opened', 'true');
-      const prevNode = tc.previousElementSibling;
-      if (prevNode && prevNode.classList.contains('tree-node')) {
-        const svg = prevNode.querySelector('.expand-btn svg');
-        if (svg) svg.style.transform = 'rotate(90deg)';
-      }
+      const svg = prevNode.querySelector('.expand-btn svg');
+      if (svg) svg.style.transform = 'rotate(90deg)';
     }
   });
 
@@ -3925,7 +3964,7 @@ function showSessionExpiredBanner(text = 'Session expired — tabs are no longer
 
   const banner = document.createElement('div');
   banner.id = 'session-expired-banner';
-  banner.style.cssText = 'background:#7f1d1d;color:#fecaca;padding:8px 12px;font-size:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;';
+  banner.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:300;background:#7f1d1d;color:#fecaca;padding:8px 12px;font-size:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;';
 
   const msg = document.createElement('span');
   msg.textContent = text;
@@ -3962,7 +4001,7 @@ function showSessionWarningBanner(text) {
     banner = document.createElement('div');
     banner.id = 'session-expired-banner';
     banner.dataset.kind = 'warning';
-    banner.style.cssText = 'background:#78350f;color:#fde68a;padding:8px 12px;font-size:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;';
+    banner.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:300;background:#78350f;color:#fde68a;padding:8px 12px;font-size:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;';
     const msg = document.createElement('span');
     msg.className = 'session-warning-msg';
     banner.appendChild(msg);
@@ -4029,6 +4068,8 @@ function handleSyncToSelected() {
 async function openSyncToPanel(tabIds) {
   syncToPendingTabIds = tabIds;
   syncToSelectedPaths.clear();
+  // Pre-select the current bound path so a plain Sync works out of the box.
+  syncToSelectedPaths.add(getCurrentBoundPath());
   updateSyncToConfirmBtn();
 
   try {
@@ -4051,8 +4092,11 @@ async function openSyncToPanel(tabIds) {
   }
 
   renderSyncToTree();
+  // Reveal the pre-selected current path and focus search so typing filters.
+  expandTreeAncestors(syncToTree, getCurrentBoundPath());
   syncToOverlay.classList.add('open');
   addPageBtn?.classList.add('active');
+  syncToSearchInput?.focus();
 }
 
 // Header "+" click: when the panel is closed, grab the active tab and open the
@@ -4085,19 +4129,16 @@ function closeSyncToPanel() {
 function updateSyncToConfirmBtn() {
   const count = syncToSelectedPaths.size;
   syncToCount.textContent = `${count} path${count !== 1 ? 's' : ''} selected`;
-  // The header "+" doubles as the confirm button: morph to "Sync" once a path is
-  // picked, revert to "+" otherwise.
-  addPageBtn?.classList.toggle('ready', count > 0);
-  if (addPageBtn) {
-    addPageBtn.title = count > 0
-      ? `Sync current page to ${count} path${count !== 1 ? 's' : ''}`
-      : 'Send current page to Canvas';
-  }
+  // Confirm now lives in the overlay (footer Sync / header +). The main header
+  // "+" no longer morphs into a "Sync" pill — that flashed during slide-in.
   // The overlay covers the popup header, so its footer Sync button is the
   // reachable confirm inside the panel.
   if (syncToConfirmBtn) {
     syncToConfirmBtn.disabled = count === 0;
     syncToConfirmBtn.textContent = count > 0 ? `Sync to ${count} path${count !== 1 ? 's' : ''}` : 'Sync';
+  }
+  if (syncToConfirmCloseBtn) {
+    syncToConfirmCloseBtn.disabled = count === 0;
   }
   renderSyncToPinned();
 }
@@ -4133,9 +4174,29 @@ function unpinSyncToPath(path) {
   updateSyncToConfirmBtn();
 }
 
+// Footer "Sync": file the tabs into every checked path, dismiss the panel, keep
+// the browser tabs open.
 async function handleSyncToConfirm() {
-  const paths = Array.from(syncToSelectedPaths);
-  const tabIds = syncToPendingTabIds;
+  await runSyncTo(Array.from(syncToSelectedPaths), syncToPendingTabIds, { closeAfter: false });
+}
+
+// Footer "Sync & Close": same, then close the browser tab(s) we just synced.
+async function handleSyncToConfirmAndClose() {
+  await runSyncTo(Array.from(syncToSelectedPaths), syncToPendingTabIds, { closeAfter: true });
+}
+
+// Header blue "+": fast-path the pending tab(s) into the current bound path
+// without touching the checkbox selection.
+async function handleSyncToCurrentPath() {
+  await runSyncTo([getCurrentBoundPath()], syncToPendingTabIds, { closeAfter: false });
+}
+
+// Header yellow "+": same, then close the synced browser tab(s).
+async function handleSyncToCurrentPathAndClose() {
+  await runSyncTo([getCurrentBoundPath()], syncToPendingTabIds, { closeAfter: true });
+}
+
+async function runSyncTo(paths, tabIds, { closeAfter } = {}) {
   if (paths.length === 0 || tabIds.length === 0) return;
 
   closeSyncToPanel();
@@ -4157,12 +4218,25 @@ async function handleSyncToConfirm() {
         tabIds.length === 1 ? `Synced 1 page${pathSuffix}` : `Synced ${tabIds.length} pages${pathSuffix}`,
         'success'
       );
+      if (closeAfter) await closeTabs(tabIds);
     }
     await loadTabs();
   } catch (error) {
     console.error('Sync To failed:', error);
     showToast('Sync To failed: ' + error.message, 'error');
   }
+}
+
+// The path the popup is currently bound to (context URL) or browsing (explorer
+// workspace path); the Sync To panel pre-selects this.
+function getCurrentBoundPath() {
+  if (currentConnection.mode === 'context' && currentConnection.context) {
+    return currentConnection.context.url || '/';
+  }
+  if (currentConnection.mode === 'explorer' && currentConnection.workspace) {
+    return currentWorkspacePath || '/';
+  }
+  return '/';
 }
 
 function renderSyncToTree() {

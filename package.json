@@ -1,6 +1,6 @@
 {
   "name": "canvas-browser-extension",
-  "version": "2.7.2",
+  "version": "2.7.4",
   "description": "Canvas Browser Extension for seamless tab synchronization",
   "type": "module",
   "scripts": {

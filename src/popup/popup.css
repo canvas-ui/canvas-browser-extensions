@@ -64,6 +64,45 @@ body[data-host="panel"] {
   overflow: hidden;
 }
 
+/* Disconnected state: red header, body greyed, only Settings actionable.
+   Conveys "not syncing" without the old banner that flashed as a flex column. */
+body.disconnected .header {
+  background: #7f1d1d;
+  border-bottom-color: #5f1414;
+}
+
+body.disconnected .header .status-text,
+body.disconnected .header .context-id,
+body.disconnected .header .context-url {
+  color: #fecaca;
+}
+
+body.disconnected .header .selector-btn,
+body.disconnected .header #dockBtn,
+body.disconnected .header .settings-btn {
+  color: #fecaca;
+}
+
+/* Everything except Settings is inert while disconnected. */
+body.disconnected .selector-btn,
+body.disconnected #dockBtn,
+body.disconnected .add-page-btn {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+body.disconnected #settingsBtn {
+  color: #fff;
+  opacity: 1;
+}
+
+body.disconnected .search-section,
+body.disconnected .tab-nav,
+body.disconnected .main {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 /* Header */
 .header {
   display: flex;
@@ -602,6 +641,16 @@ body[data-host="panel"] {
 
 .window-group:last-child {
   margin-bottom: 0;
+}
+
+/* The active browser window is sorted first and tinted so it stands out. */
+.window-group.current {
+  border-color: #0066cc;
+  box-shadow: 0 0 0 1px #0066cc;
+}
+
+.window-group.current > .window-group-header {
+  background: #e3f2fd;
 }
 
 .window-group-header {
@@ -1371,6 +1420,41 @@ body[data-host="panel"] {
   font-size: 14px;
   font-weight: 600;
   margin: 0;
+}
+
+.sync-to-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Blue twin of the main header's red "+": files the page into the current path.
+   Always blue (never morphs to the red default add-page-btn state). */
+.sync-to-current-btn,
+.sync-to-current-btn:hover {
+  background: #0066cc;
+  margin-left: 0;
+}
+
+.sync-to-current-btn:hover {
+  background: #0056b3;
+}
+
+/* Yellow twin: sync into current path AND close the tab. */
+.sync-to-current-close-btn,
+.sync-to-current-close-btn:hover {
+  background: #f59e0b;
+  margin-left: 0;
+}
+
+.sync-to-current-close-btn:hover {
+  background: #d97706;
+}
+
+.sync-to-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .sync-to-tree {
