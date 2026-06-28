@@ -1206,6 +1206,8 @@ async function handleConnect(data, sendResponse) {
       apiBasePath: data.apiBasePath,
       apiToken: resolvedApiToken,
       authMode: data.authMode || 'token',
+      // Persist email (never the password) so the field refills on reopen
+      ...(data.authMode === 'credentials' && data.email ? { email: data.email } : {}),
       connected: true
     };
 

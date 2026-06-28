@@ -15,9 +15,11 @@ let openTabsAddedToCanvas, closeTabsRemovedFromCanvas, sendNewTabsToCanvas, remo
 let removeUtmParameters;
 let contextUnloadBehavior, stashOptions, stashDiscardTabs, firefoxHideStashedTabs, chromiumStashGroupName, canvasTabsFetchLimit;
 let syncOnlyCurrentBrowser, syncOnlyTaggedTabs, syncTagFilter;
-let saveSettingsBtn, saveAndCloseBtn, resetSettingsBtn;
+let resetSettingsBtn;
 let refreshTabSyncDebugBtn, copyTabSyncDebugBtn, tabSyncDebugSummary, tabSyncDebugOutput;
 let toast;
+let saveIndicator, statusDotPanel, statusTextPanel, syncDisconnectedNotice;
+let autoSaveTimer = null;
 
 // State
 let currentAuthMode = 'token';
@@ -68,10 +70,14 @@ function initializeElements() {
   connectBtn = document.getElementById('connectBtn');
   disconnectBtn = document.getElementById('disconnectBtn');
 
-  // Connection status
+  // Connection status (header pill + panel)
   statusDot = document.getElementById('statusDot');
   statusText = document.getElementById('statusText');
+  statusDotPanel = document.getElementById('statusDotPanel');
+  statusTextPanel = document.getElementById('statusTextPanel');
   statusDetails = document.getElementById('statusDetails');
+  saveIndicator = document.getElementById('saveIndicator');
+  syncDisconnectedNotice = document.getElementById('syncDisconnectedNotice');
   userInfo = document.getElementById('userInfo');
   userName = document.getElementById('userName');
   userServer = document.getElementById('userServer');
@@ -107,8 +113,6 @@ function initializeElements() {
   syncTagFilter = document.getElementById('syncTagFilter');
 
   // Action buttons
-  saveSettingsBtn = document.getElementById('saveSettingsBtn');
-  saveAndCloseBtn = document.getElementById('saveAndCloseBtn');
   resetSettingsBtn = document.getElementById('resetSettingsBtn');
   refreshTabSyncDebugBtn = document.getElementById('refreshTabSyncDebugBtn');
   copyTabSyncDebugBtn = document.getElementById('copyTabSyncDebugBtn');
@@ -150,11 +154,14 @@ function setupEventListeners() {
   });
 
   // Settings buttons
-  saveSettingsBtn.addEventListener('click', handleSaveSettings);
-  saveAndCloseBtn.addEventListener('click', handleSaveAndClose);
   resetSettingsBtn.addEventListener('click', handleResetSettings);
   refreshTabSyncDebugBtn.addEventListener('click', refreshTabSyncDebug);
   copyTabSyncDebugBtn.addEventListener('click', copyTabSyncDebug);
+
+  // Tab navigation
+  document.querySelectorAll('.tab').forEach((tab) => {
+    tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+  });
 
   // Auto-generate browser identity if empty
   browserIdentity.addEventListener('blur', handleBrowserIdentityBlur);
@@ -169,6 +176,70 @@ function setupEventListeners() {
 
   contextUnloadBehavior.addEventListener('change', updateUnloadOptionsVisibility);
 
+  // Auto-save every sync setting on change
+  const syncControls = [
+    openTabsAddedToCanvas, closeTabsRemovedFromCanvas, sendNewTabsToCanvas,
+    removeClosedTabsFromCanvas, removeUtmParameters, contextUnloadBehavior,
+    stashDiscardTabs, firefoxHideStashedTabs, syncOnlyCurrentBrowser, syncOnlyTaggedTabs
+  ];
+  syncControls.forEach((el) => el?.addEventListener('change', scheduleAutoSave));
+
+  // Text/number inputs: save on change (blur/enter), debounced on input
+  [chromiumStashGroupName, syncTagFilter, canvasTabsFetchLimit].forEach((el) => {
+    el?.addEventListener('change', scheduleAutoSave);
+    el?.addEventListener('input', scheduleAutoSave);
+  });
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.tab-panel').forEach((p) => p.classList.toggle('active', p.id === `tab-${name}`));
+}
+
+// ---- Auto-save -------------------------------------------------------------
+function collectSyncSettings() {
+  return {
+    openTabsAddedToCanvas: openTabsAddedToCanvas.checked,
+    closeTabsRemovedFromCanvas: closeTabsRemovedFromCanvas.checked,
+    sendNewTabsToCanvas: sendNewTabsToCanvas.checked,
+    removeClosedTabsFromCanvas: removeClosedTabsFromCanvas.checked,
+    removeUtmParameters: removeUtmParameters?.checked ?? true,
+    contextUnloadBehavior: contextUnloadBehavior.value,
+    stashDiscardTabs: stashDiscardTabs.checked,
+    firefoxHideStashedTabs: firefoxHideStashedTabs.checked,
+    chromiumStashGroupName: chromiumStashGroupName.value.trim() || 'Stashed',
+    canvasTabsFetchLimit: normalizeCanvasTabsFetchLimit(canvasTabsFetchLimit.value),
+    syncOnlyCurrentBrowser: syncOnlyCurrentBrowser.checked,
+    syncOnlyTaggedTabs: syncOnlyTaggedTabs.checked,
+    syncTagFilter: syncTagFilter.value.trim()
+  };
+}
+
+function scheduleAutoSave() {
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(autoSaveSyncSettings, 350);
+}
+
+async function autoSaveSyncSettings() {
+  const payload = collectSyncSettings();
+  settings.syncSettings = { ...settings.syncSettings, ...payload };
+  try {
+    const res = await sendMessageToBackground('SET_SYNC_SETTINGS', payload);
+    if (res?.success) {
+      flashSaved();
+    } else {
+      showToast(`Failed to save: ${res?.error || 'unknown error'}`, 'error');
+    }
+  } catch (error) {
+    showToast(`Failed to save: ${error.message}`, 'error');
+  }
+}
+
+function flashSaved() {
+  if (!saveIndicator) return;
+  saveIndicator.classList.add('show');
+  clearTimeout(flashSaved._t);
+  flashSaved._t = setTimeout(() => saveIndicator.classList.remove('show'), 1500);
 }
 
 
@@ -250,7 +321,6 @@ async function loadSettings() {
       // Preselect dropdowns if values exist - this will be handled in populate functions
     }
 
-    showToast('Settings loaded successfully', 'success');
   } catch (error) {
     console.error('Failed to load settings:', error);
     showToast('Failed to load settings', 'error');
@@ -548,13 +618,9 @@ async function loadContexts() {
       populateContextSelect();
       if (syncModeSection) syncModeSection.style.display = 'block';
 
-      if (availableContexts.length === 0) {
-        showToast('No contexts found - you can create one by entering a context ID', 'info');
-      } else {
-        showToast(`Loaded ${availableContexts.length} contexts`, 'success');
-
+      if (availableContexts.length > 0) {
         // Auto-select first context if none is currently selected
-        if (!contextSelect.value && availableContexts.length > 0) {
+        if (!contextSelect.value) {
           contextSelect.value = availableContexts[0].id;
           console.log('Auto-selected first context:', availableContexts[0].id);
         }
@@ -759,116 +825,6 @@ async function handleBindContext() {
   }
 }
 
-async function handleSaveAndClose() {
-  try {
-    // Save settings first
-    await handleSaveSettings();
-
-    // Wait a moment for the save operation to complete and show success message
-    setTimeout(() => {
-      // Close the current tab
-      window.close();
-    }, 1000);
-
-  } catch (error) {
-    console.error('Failed to save and close:', error);
-    showToast(`Failed to save and close: ${error.message}`, 'error');
-  }
-}
-
-
-
-async function handleSaveSettings() {
-  try {
-    setButtonLoading(saveSettingsBtn, true);
-
-    // MANDATORY: Check if connected
-    if (!isConnected) {
-      throw new Error('You must connect to Canvas server before saving settings');
-    }
-
-    // Mode-specific validation
-    if ((currentMode === 'context') && (!isBoundToContext && !contextSelect.value)) {
-      throw new Error('You must bind to a context before saving settings');
-    }
-    if (currentMode === 'explorer' && !workspaceSelect.value) {
-      throw new Error('You must select a workspace in Explorer mode');
-    }
-
-    // If context is selected but not bound, bind automatically
-    if (currentMode === 'context' && contextSelect.value && !isBoundToContext) {
-      console.log('Auto-binding to selected context before save...');
-      await handleBindContext();
-
-      // Check if binding was successful
-      if (!isBoundToContext) {
-        throw new Error('Failed to bind to context. Please bind manually before saving.');
-      }
-    }
-
-    // Persist mode and selection
-    if (currentMode === 'explorer') {
-      const ws = availableWorkspaces.find(w => w.id === workspaceSelect.value) || null;
-      await sendMessageToBackground('SET_MODE_AND_SELECTION', { mode: 'explorer', workspace: ws });
-    }
-
-    // When using credentials auth, the JWT was obtained during connect and stored in settings
-    const resolvedApiToken = currentAuthMode === 'credentials'
-      ? settings.connectionSettings.apiToken
-      : apiToken.value.trim();
-
-    const allSettings = {
-      connectionSettings: {
-        serverUrl: serverUrl.value.trim(),
-        apiBasePath: apiBasePath.value.trim(),
-        apiToken: resolvedApiToken,
-        authMode: currentAuthMode,
-        // Persist email (not password) so the field refills on reopen
-        email: currentAuthMode === 'credentials'
-          ? authEmail.value.trim()
-          : (settings.connectionSettings.email || ''),
-        connected: isConnected
-      },
-      syncSettings: {
-        openTabsAddedToCanvas: openTabsAddedToCanvas.checked,
-        closeTabsRemovedFromCanvas: closeTabsRemovedFromCanvas.checked,
-        sendNewTabsToCanvas: sendNewTabsToCanvas.checked,
-        removeClosedTabsFromCanvas: removeClosedTabsFromCanvas.checked,
-        removeUtmParameters: removeUtmParameters?.checked ?? true,
-        contextUnloadBehavior: contextUnloadBehavior.value,
-        stashDiscardTabs: stashDiscardTabs.checked,
-        firefoxHideStashedTabs: firefoxHideStashedTabs.checked,
-        chromiumStashGroupName: chromiumStashGroupName.value.trim() || 'Stashed',
-        canvasTabsFetchLimit: normalizeCanvasTabsFetchLimit(canvasTabsFetchLimit.value),
-        syncOnlyCurrentBrowser: syncOnlyCurrentBrowser.checked,
-        syncOnlyTaggedTabs: syncOnlyTaggedTabs.checked,
-        syncTagFilter: syncTagFilter.value.trim()
-      },
-      browserIdentity: browserIdentity.value.trim()
-    };
-
-    console.log('Saving settings with mandatory context binding:', allSettings);
-
-    // Save settings via background service worker
-    const saveResponse = await sendMessageToBackground('SAVE_SETTINGS', allSettings);
-
-    if (saveResponse.success) {
-      settings.connectionSettings = { ...settings.connectionSettings, ...allSettings.connectionSettings };
-      settings.syncSettings = { ...settings.syncSettings, ...allSettings.syncSettings };
-      settings.browserIdentity = allSettings.browserIdentity;
-      showToast('Settings saved successfully! Extension is fully configured.', 'success');
-    } else {
-      throw new Error(saveResponse.error || 'Failed to save settings');
-    }
-
-  } catch (error) {
-    console.error('Failed to save settings:', error);
-    showToast(`Cannot save settings: ${error.message}`, 'error');
-  } finally {
-    setButtonLoading(saveSettingsBtn, false);
-  }
-}
-
 async function handleResetSettings() {
   if (!confirm('Reset all settings to defaults? This cannot be undone.')) {
     return;
@@ -951,9 +907,16 @@ function validateConnectionForm() {
 function updateConnectionStatus(connected) {
   isConnected = connected;
 
+  // Header pill + panel dot stay in sync
+  const dotClass = connected ? 'status-dot connected' : 'status-dot disconnected';
+  const label = connected ? 'Connected' : 'Not connected';
+  if (statusDot) statusDot.className = dotClass;
+  if (statusText) statusText.textContent = label;
+  if (statusDotPanel) statusDotPanel.className = dotClass;
+  if (statusTextPanel) statusTextPanel.textContent = label;
+  if (syncDisconnectedNotice) syncDisconnectedNotice.style.display = connected ? 'none' : 'block';
+
   if (connected) {
-    statusDot.className = 'status-dot connected';
-    statusText.textContent = 'Connected';
     statusDetails.textContent = 'Successfully connected and authenticated to Canvas server';
 
     // Show user info if available
@@ -982,8 +945,6 @@ function updateConnectionStatus(connected) {
     connectBtn.style.display = 'none';
     disconnectBtn.style.display = 'inline-block';
   } else {
-    statusDot.className = 'status-dot disconnected';
-    statusText.textContent = 'Not connected';
     statusDetails.textContent = 'Click "Test Connection" or "Connect" to establish connection';
 
     // Hide user info when disconnected

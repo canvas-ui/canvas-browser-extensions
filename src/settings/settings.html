@@ -11,275 +11,303 @@
     <header class="header">
       <div class="header-content">
         <img src="../../assets/icons/logo-wr_64x64.png" alt="Canvas" class="logo">
-        <div>
-          <h1>Canvas Extension Settings</h1>
-          <p class="subtitle">Configure your connection to Canvas server</p>
+        <div class="header-titles">
+          <h1>Settings</h1>
           <p class="subtitle" id="extVersion"></p>
         </div>
+        <div class="header-status">
+          <span class="save-indicator" id="saveIndicator">Saved</span>
+          <span class="status-pill" id="headerStatus">
+            <span class="status-dot" id="statusDot"></span>
+            <span class="status-text" id="statusText">Not connected</span>
+          </span>
+        </div>
       </div>
+
+      <nav class="tabs" id="tabs">
+        <button type="button" class="tab active" data-tab="connection">Connection</button>
+        <button type="button" class="tab" data-tab="sync">Sync</button>
+        <button type="button" class="tab" data-tab="advanced">Advanced</button>
+      </nav>
     </header>
 
     <main class="main">
-      <!-- Connection Settings -->
-      <section class="settings-section">
-        <h2>Connection Settings</h2>
-
-        <div class="form-group">
-          <label for="browserIdentity">Browser Identity</label>
-          <input type="text" id="browserIdentity" placeholder="e.g., firefox, chrome, edge"
-                 class="input-field" required>
-          <small class="help-text">Defaults to the browser name only. No random suffixes, because we are not feral.</small>
-        </div>
-
-        <div class="form-group">
-          <label for="serverUrl">Canvas Server URL</label>
-          <input type="url" id="serverUrl" value="https://my.cnvs.ai"
-                 class="input-field" required>
-          <small class="help-text">URL of your Canvas server instance</small>
-        </div>
-
-        <div class="form-group">
-          <label for="apiBasePath">REST API Base Path</label>
-          <input type="text" id="apiBasePath" value="/rest/v2"
-                 class="input-field" required>
-          <small class="help-text">API base path (usually /rest/v2)</small>
-        </div>
-
-        <div class="form-group">
-          <label>Authentication Mode</label>
-          <div class="radio-group">
-            <label class="radio-label">
-              <input type="radio" name="authMode" id="authModeToken" value="token" checked>
-              API Token
-            </label>
-            <label class="radio-label">
-              <input type="radio" name="authMode" id="authModeCredentials" value="credentials">
-              Username &amp; Password
-            </label>
+      <!-- ============ CONNECTION ============ -->
+      <section class="tab-panel active" id="tab-connection">
+        <div class="card">
+          <div class="card-header">
+            <h2>Canvas Server</h2>
+            <p class="card-desc">Connect this browser to your Canvas server.</p>
           </div>
-        </div>
 
-        <div class="form-group" id="apiTokenGroup">
-          <label for="apiToken">API Token</label>
-          <input type="password" id="apiToken" placeholder="canvas-..."
-                 class="input-field">
-          <small class="help-text">Generate this token from the Canvas web interface</small>
-        </div>
-
-        <div class="form-group" id="credentialsGroup" style="display: none;">
-          <label for="authEmail">Email</label>
-          <input type="email" id="authEmail" placeholder="user@example.com"
-                 class="input-field" autocomplete="email">
-          <label for="authPassword" style="margin-top: 8px;">Password</label>
-          <input type="password" id="authPassword" placeholder="Your password"
-                 class="input-field" autocomplete="current-password">
-          <small class="help-text">Sign in with your Canvas account credentials</small>
-        </div>
-
-        <div class="form-actions">
-          <button type="button" id="testConnectionBtn" class="btn secondary">Test Connection</button>
-          <button type="button" id="connectBtn" class="btn primary">Connect</button>
-          <button type="button" id="disconnectBtn" class="btn danger" style="display: none;">Disconnect</button>
-        </div>
-
-        <div class="connection-status" id="connectionStatus">
-          <div class="status-indicator">
-            <span class="status-dot" id="statusDot"></span>
-            <span class="status-text" id="statusText">Not connected</span>
-          </div>
-          <div class="status-details" id="statusDetails"></div>
-          <div class="user-info" id="userInfo" style="display: none;">
-            <div class="user-details">
-              <span class="user-name" id="userName"></span>
-              <span class="user-server" id="userServer"></span>
+          <div class="form-group">
+            <label>Authentication</label>
+            <div class="segmented" role="radiogroup">
+              <label class="segment">
+                <input type="radio" name="authMode" id="authModeToken" value="token" checked>
+                <span>API Token</span>
+              </label>
+              <label class="segment">
+                <input type="radio" name="authMode" id="authModeCredentials" value="credentials">
+                <span>Email &amp; Password</span>
+              </label>
             </div>
           </div>
-        </div>
-      </section>
 
-      <!-- Sync Mode and per-mode settings -->
-      <section class="settings-section" id="syncModeSection" style="display: none;">
-        <h2>Sync Mode</h2>
-
-        <div class="form-group">
-          <label for="syncModeSelect">Select Mode</label>
-          <select id="syncModeSelect" class="input-field">
-            <option value="explorer" selected>Explorer mode (default)</option>
-            <option value="context">Context mode</option>
-          </select>
-          <small class="help-text">Choose how the extension synchronizes tabs</small>
-        </div>
-
-        <!-- Explorer mode settings -->
-        <div id="explorerSettings" style="display: none;">
-          <div class="form-group">
-            <label for="workspaceSelect">Select Workspace</label>
-            <select id="workspaceSelect" class="input-field">
-              <option value="">Loading workspaces...</option>
-            </select>
-            <small class="help-text">Explorer mode: select a workspace to browse/sync</small>
+          <div class="form-group" id="apiTokenGroup">
+            <label for="apiToken">API Token</label>
+            <input type="password" id="apiToken" placeholder="canvas-..." class="input-field">
+            <small class="help-text">Generate this token from the Canvas web interface.</small>
           </div>
-        </div>
 
-        <!-- Context mode settings -->
-        <div id="contextSettings" style="display: none;">
-          <div class="form-group">
-            <label for="contextSelect">Select Context</label>
-            <select id="contextSelect" class="input-field">
-              <option value="">Loading contexts...</option>
-            </select>
-            <small class="help-text">Context mode: bind browser to a specific context</small>
+          <div class="form-group" id="credentialsGroup" style="display: none;">
+            <label for="authEmail">Email</label>
+            <input type="email" id="authEmail" placeholder="user@example.com" class="input-field" autocomplete="email">
+            <label for="authPassword" style="margin-top: 12px;">Password</label>
+            <input type="password" id="authPassword" placeholder="Your password" class="input-field" autocomplete="current-password">
+            <small class="help-text">Sign in with your Canvas account. The password is never stored.</small>
+          </div>
+
+          <div class="connection-status" id="connectionStatus">
+            <div class="status-indicator">
+              <span class="status-dot" id="statusDotPanel"></span>
+              <span class="status-text" id="statusTextPanel">Not connected</span>
+            </div>
+            <div class="status-details" id="statusDetails"></div>
+            <div class="user-info" id="userInfo" style="display: none;">
+              <div class="user-details">
+                <span class="user-name" id="userName"></span>
+                <span class="user-server" id="userServer"></span>
+              </div>
+            </div>
           </div>
 
           <div class="form-actions">
-            <button type="button" id="bindContextBtn" class="btn primary">Bind to Selected Context</button>
+            <button type="button" id="connectBtn" class="btn primary">Connect</button>
+            <button type="button" id="testConnectionBtn" class="btn secondary">Test Connection</button>
+            <button type="button" id="disconnectBtn" class="btn danger" style="display: none;">Disconnect</button>
+          </div>
+        </div>
+
+        <details class="card card-collapsible">
+          <summary>
+            <span class="summary-title">Advanced connection</span>
+            <span class="summary-hint">Server URL, API path, browser identity</span>
+          </summary>
+          <div class="card-body">
+            <div class="form-group">
+              <label for="serverUrl">Canvas Server URL</label>
+              <input type="url" id="serverUrl" value="https://my.cnvs.ai" class="input-field" required>
+            </div>
+            <div class="form-group">
+              <label for="apiBasePath">REST API Base Path</label>
+              <input type="text" id="apiBasePath" value="/rest/v2" class="input-field" required>
+              <small class="help-text">Usually <code>/rest/v2</code>.</small>
+            </div>
+            <div class="form-group">
+              <label for="browserIdentity">Browser Identity</label>
+              <input type="text" id="browserIdentity" placeholder="e.g. firefox, chrome, edge" class="input-field" required>
+              <small class="help-text">Defaults to the browser name. No random suffixes, because we are not feral.</small>
+            </div>
+          </div>
+        </details>
+      </section>
+
+      <!-- ============ SYNC ============ -->
+      <section class="tab-panel" id="tab-sync">
+        <div class="notice" id="syncDisconnectedNotice" style="display: none;">
+          Connect to Canvas first to choose a workspace or context.
+        </div>
+
+        <!-- Mode + selection -->
+        <div class="card" id="syncModeSection" style="display: none;">
+          <div class="card-header">
+            <h2>Target</h2>
+            <p class="card-desc">Where this browser's tabs are synced.</p>
           </div>
 
-          <div class="current-context" id="currentContext" style="display: none;">
-            <h3>
-              <span class="status-dot connected" id="contextStatusDot"></span>
-              Current Context
-            </h3>
-            <div class="context-info">
-              <div class="context-id" id="boundContextId">-</div>
-              <div class="context-url" id="boundContextUrl">-</div>
+          <div class="form-group">
+            <label for="syncModeSelect">Mode</label>
+            <select id="syncModeSelect" class="input-field">
+              <option value="explorer" selected>Explorer — browse &amp; sync a workspace</option>
+              <option value="context">Context — bind to one context</option>
+            </select>
+          </div>
+
+          <div id="explorerSettings" style="display: none;">
+            <div class="form-group">
+              <label for="workspaceSelect">Workspace</label>
+              <select id="workspaceSelect" class="input-field">
+                <option value="">Loading workspaces...</option>
+              </select>
             </div>
           </div>
 
+          <div id="contextSettings" style="display: none;">
+            <div class="form-group">
+              <label for="contextSelect">Context</label>
+              <select id="contextSelect" class="input-field">
+                <option value="">Loading contexts...</option>
+              </select>
+            </div>
+            <div class="form-actions">
+              <button type="button" id="bindContextBtn" class="btn primary">Bind to Context</button>
+            </div>
+            <div class="current-context" id="currentContext" style="display: none;">
+              <h3>
+                <span class="status-dot connected" id="contextStatusDot"></span>
+                Bound context
+              </h3>
+              <div class="context-info">
+                <div class="context-id" id="boundContextId">-</div>
+                <div class="context-url" id="boundContextUrl">-</div>
+              </div>
+            </div>
+          </div>
+        </div>
 
+        <!-- Sync behaviour -->
+        <div class="card">
+          <div class="card-header">
+            <h2>Sync behaviour</h2>
+            <p class="card-desc">Changes save automatically.</p>
+          </div>
+
+          <p class="group-label">Canvas → Browser</p>
+          <label class="toggle-row">
+            <span class="toggle-text">
+              <span class="toggle-title">Open tabs added to Canvas</span>
+              <span class="toggle-help">Open a tab when a page is added to the current path.</span>
+            </span>
+            <span class="switch"><input type="checkbox" id="openTabsAddedToCanvas"><span class="slider"></span></span>
+          </label>
+          <label class="toggle-row">
+            <span class="toggle-text">
+              <span class="toggle-title">Close tabs removed from Canvas</span>
+              <span class="toggle-help">Close a tab when its page is removed from the current path.</span>
+            </span>
+            <span class="switch"><input type="checkbox" id="closeTabsRemovedFromCanvas"><span class="slider"></span></span>
+          </label>
+
+          <p class="group-label">Browser → Canvas</p>
+          <label class="toggle-row">
+            <span class="toggle-text">
+              <span class="toggle-title">Send new tabs to Canvas</span>
+              <span class="toggle-help">Save newly opened tabs to the current path.</span>
+            </span>
+            <span class="switch"><input type="checkbox" id="sendNewTabsToCanvas"><span class="slider"></span></span>
+          </label>
+          <label class="toggle-row">
+            <span class="toggle-text">
+              <span class="toggle-title">Remove closed tabs from Canvas</span>
+              <span class="toggle-help">Remove a page from Canvas when its tab is closed.</span>
+            </span>
+            <span class="switch"><input type="checkbox" id="removeClosedTabsFromCanvas"><span class="slider"></span></span>
+          </label>
+          <label class="toggle-row">
+            <span class="toggle-text">
+              <span class="toggle-title">Strip UTM parameters</span>
+              <span class="toggle-help">Remove <code>utm_*</code> query params before syncing (fewer duplicates).</span>
+            </span>
+            <span class="switch"><input type="checkbox" id="removeUtmParameters"><span class="slider"></span></span>
+          </label>
+        </div>
+
+        <!-- Leaving a context -->
+        <div class="card">
+          <div class="card-header">
+            <h2>When tabs leave the current context</h2>
+          </div>
+          <div class="form-group">
+            <select id="contextUnloadBehavior" class="input-field">
+              <option value="close">Close tabs</option>
+              <option value="discard">Keep visible, unload memory</option>
+              <option value="stash">Stash with browser features</option>
+            </select>
+            <small class="help-text">Close removes inactive tabs. Unload keeps them visible but frees memory. Stash hides them (Firefox) or moves them into a collapsed tab group (Chromium).</small>
+          </div>
+
+          <div id="stashOptions" style="display: none;">
+            <label class="toggle-row">
+              <span class="toggle-text">
+                <span class="toggle-title">Discard stashed tabs</span>
+                <span class="toggle-help">Unload memory after stashing. Usually what you want.</span>
+              </span>
+              <span class="switch"><input type="checkbox" id="stashDiscardTabs"><span class="slider"></span></span>
+            </label>
+            <label class="toggle-row">
+              <span class="toggle-text">
+                <span class="toggle-title">Hide stashed tabs (Firefox)</span>
+                <span class="toggle-help">Requires the tab-hiding permission, else falls back to discard.</span>
+              </span>
+              <span class="switch"><input type="checkbox" id="firefoxHideStashedTabs"><span class="slider"></span></span>
+            </label>
+            <div class="form-group" style="margin-top: 16px;">
+              <label for="chromiumStashGroupName">Chromium stash group name</label>
+              <input type="text" id="chromiumStashGroupName" class="input-field" placeholder="Stashed">
+            </div>
+          </div>
+        </div>
+
+        <!-- Filtering -->
+        <div class="card">
+          <div class="card-header">
+            <h2>Filtering &amp; limits</h2>
+          </div>
+          <label class="toggle-row">
+            <span class="toggle-text">
+              <span class="toggle-title">Only sync the current browser</span>
+              <span class="toggle-help">Ignore tabs that don't match this browser identity.</span>
+            </span>
+            <span class="switch"><input type="checkbox" id="syncOnlyCurrentBrowser"><span class="slider"></span></span>
+          </label>
+          <label class="toggle-row">
+            <span class="toggle-text">
+              <span class="toggle-title">Only sync tabs with a tag</span>
+              <span class="toggle-help">Sync only tabs carrying the tag below.</span>
+            </span>
+            <span class="switch"><input type="checkbox" id="syncOnlyTaggedTabs"><span class="slider"></span></span>
+          </label>
+          <div class="form-group">
+            <input type="text" id="syncTagFilter" placeholder="e.g. work, personal" class="input-field" disabled>
+          </div>
+          <div class="form-group">
+            <label for="canvasTabsFetchLimit">Canvas tab fetch limit</label>
+            <input type="number" id="canvasTabsFetchLimit" class="input-field" min="1" max="1000" step="1" value="200">
+            <small class="help-text">How many Canvas tab documents the popup fetches per page.</small>
+          </div>
         </div>
       </section>
 
-      <!-- Sync Settings -->
-      <section class="settings-section">
-        <h2>Sync Settings</h2>
-
-        <div class="form-group">
-          <label class="checkbox-label">
-            <input type="checkbox" id="openTabsAddedToCanvas">
-            Open tabs added to Canvas Server
-          </label>
-          <small class="help-text">Automatically open tabs when added to current context/workspace path</small>
-        </div>
-
-        <div class="form-group">
-          <label class="checkbox-label">
-            <input type="checkbox" id="closeTabsRemovedFromCanvas">
-            Close tabs removed from Canvas Server
-          </label>
-          <small class="help-text">Automatically close tabs when removed from current context/workspace path</small>
-        </div>
-
-        <div class="form-group">
-          <label class="checkbox-label">
-            <input type="checkbox" id="sendNewTabsToCanvas">
-            Send newly opened tabs to Canvas Server
-          </label>
-          <small class="help-text">Automatically save new browser tabs to current context/workspace path</small>
-        </div>
-
-        <div class="form-group">
-          <label class="checkbox-label">
-            <input type="checkbox" id="removeClosedTabsFromCanvas">
-            Remove closed tabs from Canvas Server
-          </label>
-          <small class="help-text">Automatically remove tabs from Canvas when closed in browser</small>
-        </div>
-
-        <div class="form-group">
-          <label class="checkbox-label">
-            <input type="checkbox" id="removeUtmParameters">
-            Remove UTM parameters from synced URLs
-          </label>
-          <small class="help-text">Strips <code>utm_*</code> query params before sending URLs (reduces backend duplicates)</small>
-        </div>
-
-        <div class="form-group">
-          <label for="contextUnloadBehavior">When tabs leave the current context</label>
-          <select id="contextUnloadBehavior" class="input-field">
-            <option value="close">Close tabs</option>
-            <option value="discard">Keep visible and unload memory</option>
-            <option value="stash">Stash tabs using browser features</option>
-          </select>
-          <small class="help-text">
-            Close removes inactive context tabs. Unload keeps them visible but releases memory. Stash hides them in Firefox or moves them into a collapsed Chromium tab group.
-          </small>
-        </div>
-
-        <div id="stashOptions" style="display: none;">
-          <div class="form-group">
-            <label class="checkbox-label">
-              <input type="checkbox" id="stashDiscardTabs">
-              Discard stashed tabs
-            </label>
-            <small class="help-text">Unload tab memory after stashing. Usually what you want unless a page is made of glass.</small>
+      <!-- ============ ADVANCED ============ -->
+      <section class="tab-panel" id="tab-advanced">
+        <div class="card">
+          <div class="card-header">
+            <h2>Tab Sync Debug</h2>
+            <p class="card-desc">Inspect the persisted document-to-tab index and live browser tab state.</p>
           </div>
-
-          <div class="form-group">
-            <label class="checkbox-label">
-              <input type="checkbox" id="firefoxHideStashedTabs">
-              Hide stashed tabs in Firefox
-            </label>
-            <small class="help-text">Requires Firefox tab hiding permission. If disabled, Firefox falls back to discard-only behavior.</small>
+          <div class="form-actions">
+            <button type="button" id="refreshTabSyncDebugBtn" class="btn secondary">Refresh</button>
+            <button type="button" id="copyTabSyncDebugBtn" class="btn secondary">Copy JSON</button>
           </div>
-
-          <div class="form-group">
-            <label for="chromiumStashGroupName">Chromium stash group name</label>
-            <input type="text" id="chromiumStashGroupName" class="input-field" placeholder="Stashed">
-            <small class="help-text">Used for the collapsed tab group that stores inactive context tabs.</small>
+          <div class="connection-status debug-panel">
+            <div class="status-details" id="tabSyncDebugSummary">No debug snapshot loaded yet.</div>
+            <pre id="tabSyncDebugOutput" class="debug-output">Click "Refresh" to inspect the current tab/document index.</pre>
           </div>
         </div>
 
-        <div class="form-group">
-          <label for="canvasTabsFetchLimit">Canvas tab fetch limit</label>
-          <input type="number" id="canvasTabsFetchLimit" class="input-field" min="1" max="1000" step="1" value="200">
-          <small class="help-text">How many Canvas tab documents the popup fetches per page.</small>
-        </div>
-
-        <h3>Sync Filtering Options</h3>
-
-        <div class="form-group">
-          <label class="checkbox-label">
-            <input type="checkbox" id="syncOnlyCurrentBrowser">
-            Sync only tabs for the current browser
-          </label>
-          <small class="help-text">Only sync tabs that match the current browser identity string</small>
-        </div>
-
-        <div class="form-group">
-          <label class="checkbox-label">
-            <input type="checkbox" id="syncOnlyTaggedTabs">
-            Sync only tabs with tag:
-          </label>
-          <input type="text" id="syncTagFilter" placeholder="e.g., work, personal"
-                 class="input-field" style="margin-top: 8px;" disabled>
-          <small class="help-text">Only sync tabs that have the specified tag in their feature array</small>
-        </div>
-
-        <div class="form-actions">
-          <button type="button" id="saveSettingsBtn" class="btn primary">Save Settings</button>
-          <button type="button" id="saveAndCloseBtn" class="btn primary">Save Settings and Close</button>
-          <button type="button" id="resetSettingsBtn" class="btn secondary">Reset to Defaults</button>
-        </div>
-      </section>
-
-      <section class="settings-section">
-        <h2>Tab Sync Debug</h2>
-        <p class="help-text">Inspect the persisted document-to-tab index and the live browser tab state before testing.</p>
-
-        <div class="form-actions">
-          <button type="button" id="refreshTabSyncDebugBtn" class="btn secondary">Refresh Debug State</button>
-          <button type="button" id="copyTabSyncDebugBtn" class="btn secondary">Copy Debug JSON</button>
-        </div>
-
-        <div class="connection-status debug-panel">
-          <div class="status-details" id="tabSyncDebugSummary">No debug snapshot loaded yet.</div>
-          <pre id="tabSyncDebugOutput" class="debug-output">Click "Refresh Debug State" to inspect the current tab/document index.</pre>
+        <div class="card">
+          <div class="card-header">
+            <h2>Reset</h2>
+            <p class="card-desc">Restore all settings to their defaults.</p>
+          </div>
+          <div class="form-actions">
+            <button type="button" id="resetSettingsBtn" class="btn danger">Reset to Defaults</button>
+          </div>
         </div>
       </section>
     </main>
 
-    <!-- Status Messages -->
     <div class="toast" id="toast" style="display: none;"></div>
   </div>
 
